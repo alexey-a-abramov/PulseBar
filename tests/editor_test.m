@@ -8,18 +8,7 @@
 #import "../Sources/LayoutEditorWindowController.h"
 #import "../Sources/BarView.h"
 #import "../Sources/Pomodoro.h"
-
-static void feed(BarView *v) {
-    double cores[8] = {12, 80, 33, 5, 60, 20, 95, 40};
-    MemInfo mem = { (uint64_t)(13.7 * 1e9), (uint64_t)(17.18 * 1e9), 80.0, 2, (uint64_t)(21.8 * 1e9), (uint64_t)(22.5 * 1e9) };
-    DiskIO disk = { 5.0 * 1024 * 1024, 800.0 * 1024 };
-    DiskSpace sp = { (uint64_t)(120.0 * 1e9), (uint64_t)(494.0 * 1e9) };
-    BatteryInfo bat = { 1, 76, 1, 0 };
-    NowPlaying np; memset(&np, 0, sizeof(np)); strcpy(np.title, "Midnight City"); strcpy(np.artist, "M83");
-    np.isPlaying = 1; np.hasInfo = 1; np.elapsed = 72; np.duration = 244;
-    [v updateWithCPU:62 cores:cores count:8 mem:mem net:(NetSample){1.6e6, 4.0e5} gpu:48 disk:disk space:sp
-            battery:bat topProc:@"WindowServer" topCPU:18.3 nowPlaying:np volume:0.62 mute:NO brightness:0.63];
-}
+#import "../Sources/PreviewData.h"
 
 static void writePNG(NSView *v, NSString *path, CGFloat scale) {
     NSImage *img = [[NSImage alloc] initWithData:[v dataWithPDFInsideRect:v.bounds]];
@@ -51,7 +40,7 @@ int main(void) { @autoreleasepool {
     CGFloat W = 1004, H = 30, S = 2.4; int gap = 12;
     BarView *bar = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, W, H)];
     Pomodoro *p = [Pomodoro new]; [p toggle]; bar.pomodoro = p; bar.caffeinated = YES;
-    bar.uptime = 3 * 86400; feed(bar); [bar setMode:BarModeSystem animated:NO];
+    bar.uptime = 3 * 86400; PBFeedSample(bar, 60); [bar setMode:BarModeSystem animated:NO];
 
     int rowPix = (int)(H * S), pw = (int)(W * S), ph = 2 * rowPix + gap;
     NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:pw pixelsHigh:ph

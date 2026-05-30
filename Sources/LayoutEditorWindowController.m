@@ -4,6 +4,7 @@
 #import "LayoutEditorWindowController.h"
 #import "BarView.h"
 #import "Pomodoro.h"
+#import "PreviewData.h"
 
 static const CGFloat kWinW = 600, kWinH = 420;
 
@@ -42,6 +43,7 @@ static const CGFloat kWinW = 600, kWinH = 420;
         _pomo = [Pomodoro new]; [_pomo toggle];
         _renderBar.pomodoro = _pomo; _renderBar.caffeinated = YES;
         _renderBar.uptime = 3 * 86400 + 4 * 3600 + 600;
+        PBFeedSample(_renderBar, 60);   // one-time fill; data persists across refreshes
         [self build];
     }
     return self;
@@ -177,23 +179,10 @@ static NSTextField *lbl(NSString *s, NSRect f, CGFloat sz, BOOL secondary) {
 
 #pragma mark - preview
 
-- (void)feed:(BarView *)v {
-    double cores[8] = {12, 80, 33, 5, 60, 20, 95, 40};
-    MemInfo mem = { (uint64_t)(13.7 * 1e9), (uint64_t)(17.18 * 1e9), 80.0, 2, (uint64_t)(21.8 * 1e9), (uint64_t)(22.5 * 1e9) };
-    DiskIO disk = { 5.0 * 1024 * 1024, 800.0 * 1024 };
-    DiskSpace sp = { (uint64_t)(120.0 * 1e9), (uint64_t)(494.0 * 1e9) };
-    BatteryInfo bat = { 1, 76, 1, 0 };
-    NowPlaying np; memset(&np, 0, sizeof(np)); strcpy(np.title, "Midnight City"); strcpy(np.artist, "M83");
-    np.isPlaying = 1; np.hasInfo = 1; np.elapsed = 72; np.duration = 244;
-    [v updateWithCPU:62 cores:cores count:8 mem:mem net:(NetSample){1.6e6, 4.0e5} gpu:48 disk:disk space:sp
-            battery:bat topProc:@"WindowServer" topCPU:18.3 nowPlaying:np volume:0.62 mute:NO brightness:0.63];
-}
-
 - (void)refreshPreview {
     CGFloat w = lround(_widthSlider.doubleValue);
     _renderBar.frame = NSMakeRect(0, 0, w, 30);
     [_renderBar setMode:_mode animated:NO];
-    [self feed:_renderBar];
     NSImage *img = [[NSImage alloc] initWithData:[_renderBar dataWithPDFInsideRect:_renderBar.bounds]];
     _preview.image = img;
 }
