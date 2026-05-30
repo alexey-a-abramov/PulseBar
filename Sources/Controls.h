@@ -31,3 +31,7 @@ NowPlaying CtlNowPlaying(void);      // last-known Now Playing
 void       CtlMediaPlayPause(void);
 void       CtlMediaNext(void);
 void       CtlMediaPrev(void);
+
+// Preferred media app controlled via AppleScript (default "Spotify"; also "Music").
+void       CtlSetMediaApp(NSString *app);
+NSString  *CtlMediaApp(void);

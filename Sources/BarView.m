@@ -299,7 +299,8 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         case TMEDIA: {
             CGFloat by = 4, bs = 22, gap = 2, x0 = r.origin.x + 4;
             [self symbol:@"backward.fill"                       in:NSMakeRect(x0, by, bs, bs) pt:11 color:[NSColor whiteColor]];
-            [self symbol:_npPlaying ? @"pause.fill" : @"play.fill" in:NSMakeRect(x0 + bs + gap, by, bs, bs) pt:12 color:[self accent]];
+            [self symbol:_npPlaying ? @"pause.fill" : @"play.fill" in:NSMakeRect(x0 + bs + gap, by, bs, bs) pt:12
+                   color:_npPlaying ? [self accent] : [NSColor colorWithCalibratedWhite:0.55 alpha:1]];   // blue=playing, dim=paused
             [self symbol:@"forward.fill"                        in:NSMakeRect(x0 + 2 * (bs + gap), by, bs, bs) pt:11 color:[NSColor whiteColor]];
             CGFloat tx = x0 + 3 * (bs + gap) + 4, tw = NSMaxX(r) - tx - 4;
             if (tw > 24) {

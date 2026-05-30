@@ -116,21 +116,65 @@ static void loadMR(void) {
     }
 }
 
-void CtlMediaInit(void) { loadMR(); }
+// ---- configurable media app via AppleScript (default Spotify; MediaRemote fallback) ----
+static NSString      *g_mediaApp = @"Spotify";
+static NowPlaying     g_appNP;          // from the configured app (main-thread only)
+static dispatch_queue_t g_mq;           // serial queue for (blocking) AppleScript
+
+void CtlSetMediaApp(NSString *app) { if (app.length) g_mediaApp = [app copy]; }
+NSString *CtlMediaApp(void) { return g_mediaApp; }
+
+// Run osascript and return trimmed stdout. BLOCKING — only call on g_mq.
+static NSString *osa(NSString *src) {
+    NSTask *t = [NSTask new]; t.launchPath = @"/usr/bin/osascript"; t.arguments = @[@"-e", src];
+    NSPipe *o = [NSPipe pipe]; t.standardOutput = o; t.standardError = [NSPipe pipe];
+    @try { [t launch]; } @catch (id e) { return nil; }
+    NSData *d = [[o fileHandleForReading] readDataToEndOfFile];
+    [t waitUntilExit];
+    return [[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]
+            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+static NowPlaying queryApp(NSString *app) {
+    NowPlaying np; memset(&np, 0, sizeof(np));
+    NSString *dur = [app isEqualToString:@"Music"] ? @"((duration of current track) as text)"
+                                                   : @"(((duration of current track) / 1000) as text)";
+    NSString *src = [NSString stringWithFormat:
+        @"with timeout of 2 seconds\n"
+        @"if application \"%@\" is running then\n"
+        @"tell application \"%@\"\n"
+        @"if player state is stopped then\nreturn \"stopped\"\nend if\n"
+        @"return (player state as text) & tab & (name of current track) & tab & (artist of current track) & tab & (player position as text) & tab & %@\n"
+        @"end tell\nelse\nreturn \"notrunning\"\nend if\nend timeout", app, app, dur];
+    NSString *out = osa(src);
+    if (out.length && ![out isEqualToString:@"notrunning"] && ![out isEqualToString:@"stopped"]) {
+        NSArray<NSString *> *p = [out componentsSeparatedByString:@"\t"];
+        if (p.count >= 3) {
+            np.hasInfo = 1;
+            np.isPlaying = [p[0] isEqualToString:@"playing"];
+            strncpy(np.title,  p[1].UTF8String, sizeof(np.title) - 1);
+            strncpy(np.artist, p[2].UTF8String, sizeof(np.artist) - 1);
+            if (p.count >= 5) { np.elapsed = p[3].doubleValue; np.duration = p[4].doubleValue; }
+        }
+    }
+    return np;
+}
+
+void CtlMediaInit(void) { loadMR(); g_mq = dispatch_queue_create("ai.pulsebar.media", DISPATCH_QUEUE_SERIAL); }
 
 void CtlMediaRefresh(void) {
-    loadMR(); if (!g_mrGet) return;
-    g_mrGet(dispatch_get_main_queue(), ^(CFDictionaryRef info) {
+    if (g_mq) {
+        NSString *app = g_mediaApp;
+        dispatch_async(g_mq, ^{ NowPlaying np = queryApp(app); dispatch_async(dispatch_get_main_queue(), ^{ g_appNP = np; }); });
+    }
+    loadMR();
+    if (g_mrGet) g_mrGet(dispatch_get_main_queue(), ^(CFDictionaryRef info) {   // fallback (browsers etc.)
         NowPlaying np; memset(&np, 0, sizeof(np));
         if (info) {
             np.hasInfo = 1;
-            if (g_kTitle) { CFStringRef t = CFDictionaryGetValue(info, *g_kTitle);
-                            if (t) CFStringGetCString(t, np.title, sizeof(np.title), kCFStringEncodingUTF8); }
-            if (g_kArtist){ CFStringRef a = CFDictionaryGetValue(info, *g_kArtist);
-                            if (a) CFStringGetCString(a, np.artist, sizeof(np.artist), kCFStringEncodingUTF8); }
-            if (g_kRate)  { CFNumberRef r = CFDictionaryGetValue(info, *g_kRate);
-                            double rate = 0; if (r) CFNumberGetValue(r, kCFNumberDoubleType, &rate);
-                            np.isPlaying = rate > 0.01; }
+            if (g_kTitle)    { CFStringRef t = CFDictionaryGetValue(info, *g_kTitle);   if (t) CFStringGetCString(t, np.title, sizeof(np.title), kCFStringEncodingUTF8); }
+            if (g_kArtist)   { CFStringRef a = CFDictionaryGetValue(info, *g_kArtist);  if (a) CFStringGetCString(a, np.artist, sizeof(np.artist), kCFStringEncodingUTF8); }
+            if (g_kRate)     { CFNumberRef r = CFDictionaryGetValue(info, *g_kRate); double rate = 0; if (r) CFNumberGetValue(r, kCFNumberDoubleType, &rate); np.isPlaying = rate > 0.01; }
             if (g_kElapsed)  { CFNumberRef n = CFDictionaryGetValue(info, *g_kElapsed);  if (n) CFNumberGetValue(n, kCFNumberDoubleType, &np.elapsed); }
             if (g_kDuration) { CFNumberRef n = CFDictionaryGetValue(info, *g_kDuration); if (n) CFNumberGetValue(n, kCFNumberDoubleType, &np.duration); }
         }
@@ -138,7 +182,25 @@ void CtlMediaRefresh(void) {
     });
 }
 
-NowPlaying CtlNowPlaying(void) { return g_np; }
-void CtlMediaPlayPause(void) { loadMR(); if (g_mrSend) g_mrSend(2, NULL); }  // kMRTogglePlayPause
-void CtlMediaNext(void)      { loadMR(); if (g_mrSend) g_mrSend(4, NULL); }  // kMRNextTrack
-void CtlMediaPrev(void)      { loadMR(); if (g_mrSend) g_mrSend(5, NULL); }  // kMRPreviousTrack
+NowPlaying CtlNowPlaying(void) { return g_appNP.hasInfo ? g_appNP : g_np; }
+
+static void mediaCmd(NSString *cmd) {   // cmd: playpause | next track | previous track
+    if (!g_mq) g_mq = dispatch_queue_create("ai.pulsebar.media", DISPATCH_QUEUE_SERIAL);
+    NSString *app = g_mediaApp;
+    dispatch_async(g_mq, ^{
+        NSString *running = osa([NSString stringWithFormat:@"if application \"%@\" is running then\nreturn \"y\"\nelse\nreturn \"n\"\nend if", app]);
+        if ([running isEqualToString:@"y"]) {
+            osa([NSString stringWithFormat:@"with timeout of 3 seconds\ntell application \"%@\" to %@\nend timeout", app, cmd]);
+        } else if ([cmd isEqualToString:@"playpause"]) {
+            osa([NSString stringWithFormat:@"tell application \"%@\" to play", app]);   // launch + play
+        } else {
+            loadMR(); if (g_mrSend) g_mrSend([cmd isEqualToString:@"next track"] ? 4 : 5, NULL);
+        }
+        NowPlaying np = queryApp(app);
+        dispatch_async(dispatch_get_main_queue(), ^{ g_appNP = np; });
+    });
+}
+
+void CtlMediaPlayPause(void) { mediaCmd(@"playpause"); }
+void CtlMediaNext(void)      { mediaCmd(@"next track"); }
+void CtlMediaPrev(void)      { mediaCmd(@"previous track"); }

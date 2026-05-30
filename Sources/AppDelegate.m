@@ -63,6 +63,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     CtlMediaInit();
 
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    { NSString *mapp = [ud stringForKey:@"mediaApp"]; if (mapp.length) CtlSetMediaApp(mapp); }   // default Spotify
     self.pomo = [Pomodoro new];
     self.pomo.workMinutes  = [ud objectForKey:@"work"]  ? [ud integerForKey:@"work"]  : 25;
     self.pomo.breakMinutes = [ud objectForKey:@"break"] ? [ud integerForKey:@"break"] : 5;
@@ -307,16 +308,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)barSetVolume:(float)v   { if (CtlGetMute()) CtlSetMute(NO); CtlSetVolume(v); }
 - (void)barToggleMute           { CtlSetMute(!CtlGetMute()); }
 - (void)barSetBrightness:(float)v { CtlSetBrightness(v); }
-- (void)barMediaPlayPause {
-    NowPlaying np = CtlNowPlaying();
-    PBLog(@"media play/pause (nowPlaying=%s title='%s')", np.hasInfo ? "yes" : "NO", np.title);
-    if (np.hasInfo) { CtlMediaPlayPause(); return; }
-    // Nothing is playing: launch Spotify and start it.
-    [self launch:@"/usr/bin/open" args:@[@"-a", @"Spotify"]];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self launch:@"/usr/bin/osascript" args:@[@"-e", @"tell application \"Spotify\" to play"]];
-    });
-}
+- (void)barMediaPlayPause { PBLog(@"media play/pause (%@)", CtlMediaApp()); CtlMediaPlayPause(); }
 - (void)barMediaNext            { PBLog(@"action media next"); CtlMediaNext(); }
 - (void)barMediaPrev            { PBLog(@"action media prev"); CtlMediaPrev(); }
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
