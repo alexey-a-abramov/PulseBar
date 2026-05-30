@@ -42,6 +42,8 @@ int main(void) {
         CHECK(m.totalBytes > 0, "total memory > 0");
         CHECK(m.usedBytes > 0 && m.usedBytes <= m.totalBytes, "0 < used <= total");
         CHECK(m.usedPct > 0.0 && m.usedPct <= 100.0, "used%% in (0,100]");
+        printf("  swap = %.2f / %.2f GB used\n", m.swapUsedBytes / 1e9, m.swapTotalBytes / 1e9);
+        CHECK(m.swapUsedBytes <= m.swapTotalBytes, "swap used <= total");
 
         // Network: prime, wait, sample. Rates must be non-negative.
         StatsNetwork();

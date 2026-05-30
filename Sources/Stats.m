@@ -135,6 +135,12 @@ MemInfo StatsMemory(void) {
         level = 1;
     }
     m.pressure = level;
+
+    struct xsw_usage sw; size_t sws = sizeof(sw);
+    if (sysctlbyname("vm.swapusage", &sw, &sws, NULL, 0) == 0) {
+        m.swapUsedBytes  = sw.xsu_used;
+        m.swapTotalBytes = sw.xsu_total;
+    }
     return m;
 }
 

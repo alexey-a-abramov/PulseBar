@@ -177,6 +177,10 @@ static double toGB(uint64_t b) { return (double)b / (1024.0 * 1024.0 * 1024.0); 
         }
         case TMEM: {
             [self label:@"MEM" in:r];
+            if (_mem.swapUsedBytes > 0)
+                [self t:[NSString stringWithFormat:@"swap %.1fG", toGB(_mem.swapUsedBytes)]
+                       at:NSMakePoint(r.origin.x + 34, 3) sz:6.5 w:NSFontWeightBold
+                        c:[NSColor colorWithSRGBRed:1 green:0.60 blue:0.20 alpha:1]];
             [self t:[NSString stringWithFormat:@"%.0f%%", _mem.usedPct] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self load:_mem.usedPct]];
             CGFloat bx = r.origin.x + 6, bw = r.size.width - 12, by = 17, bh = 8;
             [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill];

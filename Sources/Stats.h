@@ -22,10 +22,12 @@ double StatsCPUPercent(void);
 int StatsPerCore(double *out, int maxN);
 
 typedef struct {
-    uint64_t usedBytes;     // approx "memory used" (active + wired + compressed)
-    uint64_t totalBytes;    // physical RAM
-    double   usedPct;       // 0..100
-    int      pressure;      // kern memory pressure level (1 normal, 2 warn, 4 critical)
+    uint64_t usedBytes;       // approx "memory used" (active + wired + compressed)
+    uint64_t totalBytes;      // physical RAM
+    double   usedPct;         // 0..100
+    int      pressure;        // kern memory pressure level (1 normal, 2 warn, 4 critical)
+    uint64_t swapUsedBytes;   // vm.swapusage
+    uint64_t swapTotalBytes;
 } MemInfo;
 MemInfo StatsMemory(void);
 
