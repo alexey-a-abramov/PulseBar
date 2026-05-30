@@ -257,10 +257,12 @@
     _listening = YES; _mic.contentTintColor = [NSColor systemRedColor];
     _mic.image = [NSImage imageWithSystemSymbolName:@"stop.circle.fill" accessibilityDescription:nil];
     _status.stringValue = @"🎙 Listening… (tap 🎙 to send)"; _status.textColor = [NSColor systemRedColor];
+    __weak typeof(self) wself = self;
     _task = [_recognizer recognitionTaskWithRequest:_req resultHandler:^(SFSpeechRecognitionResult *result, NSError *e) {
-        if (result) { self->_input.stringValue = result.bestTranscription.formattedString;
-            if (result.isFinal) { NSString *t = self->_input.stringValue; [self stopListening]; if (t.length) [self send:nil]; } }
-        if (e) [self stopListening];
+        typeof(self) sself = wself; if (!sself) return;   // window torn down mid-listen → bail (no retain cycle)
+        if (result) { sself->_input.stringValue = result.bestTranscription.formattedString;
+            if (result.isFinal) { NSString *t = sself->_input.stringValue; [sself stopListening]; if (t.length) [sself send:nil]; } }
+        if (e) [sself stopListening];
     }];
 }
 - (void)stopListening {
