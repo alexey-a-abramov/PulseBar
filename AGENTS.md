@@ -121,6 +121,36 @@ sampler to `Stats`/`Controls` and feed it through `AppDelegate -tick` →
 - **Menu-bar companion** — mirror one key stat to the menu bar; **history** persistence + tap-to-expand graphs.
 - **Haptics / sounds** on actions; richer gesture set (two-finger, long-press secondary actions).
 
+## The Agent (local Gemma) — how inference works
+
+- **Ollama** runs as a local launchd service (`brew services start ollama`, port
+  `11434`). It loads **Gemma 3 4B** (a quantized GGUF) and serves an HTTP API.
+- `PBAgent` POSTs to `/api/chat` with a **system prompt** (defining a strict JSON
+  tool protocol + the allowed actions), the conversation history, and the user
+  message. Gemma runs on the M1 **GPU via Metal** (llama.cpp backend) and returns
+  a single JSON object `{action, args, say}`.
+- PulseBar parses it and executes the action through `-agentRunAction:args:`
+  (CoreAudio / DisplayServices / MediaRemote / NSTask). 100% **on-device, offline,
+  private** — nothing leaves the Mac.
+- Voice (next): on-device `SFSpeechRecognizer` STT → text → the same pipeline,
+  with a "listening" state in the window.
+
+**Memory & speed (Gemma 3 4B, Q4 on a 16 GB M1):** ~3.3 GB on disk; ~3.5–4.5 GB
+resident **only while loaded**. Ollama keeps it warm for ~5 min after the last
+request (`keep_alive`), then frees the RAM. ~25–40 tok/s; JSON replies are short
+(~30–60 tok) → ~1–2 s warm, ~3–5 s cold (first call loads the model). Swap to
+`gemma3:1b` (~0.8 GB, faster) or `gemma3:12b` (~8 GB, smarter) by changing
+`PBAgent.model`. The integration test (`tests/agent_test.sh`) confirms the model
+is up and answers with an action.
+
+## Function keys (Fn → F1–F12)
+
+Because PulseBar owns the whole bar, the system's "hold Fn for F-keys" is
+suppressed — so PulseBar re-implements it: a global flags-changed monitor detects
+Fn and the bar switches to a full-width F1–F12 keypad (`BarView.fnMode`); tapping a
+key posts the real function key via `CGEvent`. Needs **Accessibility** permission
+(observe Fn + post keys). Toggle: menu → "Function Keys on Fn".
+
 ## Known caveats
 - Some Actions prompt for permission once (Screenshot → Screen Recording,
   Dark Mode → Automation/System Events).
