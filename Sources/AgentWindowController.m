@@ -148,7 +148,7 @@
     [c addSubview:_scroll];
 
     // quick-suggestion chips
-    NSArray *chips = @[@"volume 30", @"dark mode", @"▶ play music", @"open Safari"];
+    NSArray *chips = @[@"what's my battery", @"focus mode", @"volume 30", @"open Safari"];
     CGFloat cx = 10;
     for (NSString *chip in chips) {
         NSButton *b = [NSButton buttonWithTitle:chip target:self action:@selector(chipTapped:)];

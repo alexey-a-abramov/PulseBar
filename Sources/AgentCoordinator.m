@@ -5,6 +5,8 @@
 #import "Agent.h"
 #import "AgentWindowController.h"
 #import "Controls.h"
+#import "AppIndex.h"
+#import "Queries.h"
 #import "Log.h"
 
 @interface PBAgentCoordinator () <PBAgentRunner>
@@ -23,7 +25,10 @@
 }
 
 - (AgentWindowController *)ensureWindow {
-    if (!_agent)  { _agent = [PBAgent new]; _agent.runner = self; }
+    if (!_agent)  {
+        _agent = [PBAgent new]; _agent.runner = self;
+        _agent.appResolver = ^NSString *(NSString *q) { return [[PBAppIndex shared] bestMatchFor:q].name; };
+    }
     if (!_window) _window = [[AgentWindowController alloc] initWithAgent:_agent];
     return _window;
 }
@@ -44,7 +49,7 @@
 // PBAgentRunner — turn the model's chosen action into a real Mac action.
 - (NSString *)agentRunAction:(NSString *)action args:(NSDictionary *)args {
     PBLog(@"agent action: %@ %@", action, args);
-    if ([action isEqualToString:@"open_app"])        { NSString *n = args[@"name"]; if (n) [_host agentLaunch:@"/usr/bin/open" args:@[@"-a", n]]; return [NSString stringWithFormat:@"Opening %@.", n ?: @"app"]; }
+    if ([action isEqualToString:@"open_app"])        { NSString *n = args[@"name"]; if (!n.length) return @"Which app?"; NSString *target = [[PBAppIndex shared] bestMatchFor:n].name ?: n; [_host agentLaunch:@"/usr/bin/open" args:@[@"-a", target]]; return [NSString stringWithFormat:@"Opening %@.", target]; }
     if ([action isEqualToString:@"set_volume"])      { float p = [args[@"percent"] floatValue]; if (CtlGetMute()) CtlSetMute(NO); CtlSetVolume(p / 100.0f); return [NSString stringWithFormat:@"Volume set to %.0f%%.", p]; }
     if ([action isEqualToString:@"set_brightness"])  { float p = [args[@"percent"] floatValue]; CtlSetBrightness(p / 100.0f); return [NSString stringWithFormat:@"Brightness set to %.0f%%.", p]; }
     if ([action isEqualToString:@"media"])           { NSString *cmd = args[@"cmd"]; if ([cmd isEqualToString:@"next"]) CtlMediaNext(); else if ([cmd isEqualToString:@"prev"] || [cmd isEqualToString:@"previous"]) CtlMediaPrev(); else CtlMediaPlayPause(); return @"Done."; }
@@ -74,6 +79,9 @@
     // --- Misc safe ---
     if ([action isEqualToString:@"web_search"])      { NSString *q = args[@"query"]; if (q.length) { NSString *enc = [q stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet]; [_host agentLaunch:@"/usr/bin/open" args:@[[@"https://www.google.com/search?q=" stringByAppendingString:enc]]]; } return [NSString stringWithFormat:@"Searching the web for “%@”.", q ?: @""]; }
     if ([action isEqualToString:@"do_not_disturb"])  { return @"I can't toggle Focus yet — try it from Control Center."; }
+
+    // --- Query: read-only status, answered for the user (no side effects) ---
+    if ([action isEqualToString:@"get_status"])      { NSString *a = [PBQueries answer:args[@"what"]]; return a ?: @"I don't have that information."; }
 
     return nil;
 }

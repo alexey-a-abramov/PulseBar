@@ -12,6 +12,7 @@
 @interface PBAgent : NSObject
 @property (nonatomic, weak) id<PBAgentRunner> runner;
 @property (nonatomic, copy) NSString *model;        // e.g. "gemma3:4b"
+@property (nonatomic, copy) NSString *(^appResolver)(NSString *query);  // free text → canonical app name (for "open X")
 
 // Ask the agent. `interpretation` is the parsed action (nil for plain replies),
 // `reply` is the text to show the user. Always called on the main thread.

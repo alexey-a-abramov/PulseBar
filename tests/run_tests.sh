@@ -34,7 +34,31 @@ clang -fobjc-arc -O0 -isysroot "$SDK" \
 "$BUILD/layout_test"
 LAYOUT=$?
 
-UNIT=0; [ "$STATS" -eq 0 ] && [ "$LAYOUT" -eq 0 ] || UNIT=1
+echo
+echo "------------------------------------------------------------"
+echo " UNIT TESTS — voice agent (app index · intent parser · queries)"
+echo "------------------------------------------------------------"
+clang -fobjc-arc -O0 -isysroot "$SDK" \
+  "$TESTS/appindex_test.m" "$SRC/AppIndex.m" \
+  -framework Foundation -framework AppKit \
+  -o "$BUILD/appindex_test" || { echo "compile failed"; exit 1; }
+"$BUILD/appindex_test"; APPIDX=$?
+
+clang -fobjc-arc -O0 -isysroot "$SDK" \
+  "$TESTS/voicecommands_test.m" "$SRC/VoiceCommands.m" \
+  -framework Foundation \
+  -o "$BUILD/voicecommands_test" || { echo "compile failed"; exit 1; }
+"$BUILD/voicecommands_test"; VOICE=$?
+
+clang -fobjc-arc -O0 -isysroot "$SDK" \
+  "$TESTS/queries_test.m" "$SRC/Queries.m" "$SRC/Stats.m" "$SRC/Controls.m" \
+  -framework Foundation -framework CoreFoundation -framework IOKit \
+  -framework CoreAudio -framework CoreGraphics -framework AppKit -framework ApplicationServices \
+  -o "$BUILD/queries_test" || { echo "compile failed"; exit 1; }
+"$BUILD/queries_test"; QUERIES=$?
+
+UNIT=0
+for r in "$STATS" "$LAYOUT" "$APPIDX" "$VOICE" "$QUERIES"; do [ "$r" -eq 0 ] || UNIT=1; done
 
 echo
 echo "============================================================"

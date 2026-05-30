@@ -3,29 +3,22 @@
 //
 #import "Agent.h"
 #import "Log.h"
+#import "VoiceCommands.h"
 
 static NSString *const kOllama = @"http://127.0.0.1:11434";
 
-static NSString *const kSystemPrompt =
-@"You are PulseBar, a Mac assistant that controls safe system settings and the PulseBar Touch Bar itself. For EVERY user message reply with ONE JSON object and NOTHING else (no markdown, no code fences):\n"
-@"{\"action\":\"<name>\",\"args\":{...},\"say\":\"<short sentence>\"}\n"
-@"Allowed actions and the EXACT arg shape:\n"
-@"  set_volume {\"percent\":30}\n"
-@"  adjust_volume {\"dir\":\"up\"}   (dir is up or down)\n"
-@"  toggle_mute {}\n"
-@"  set_brightness {\"percent\":70}\n"
-@"  adjust_brightness {\"dir\":\"up\"}\n"
-@"  media {\"cmd\":\"playpause\"}   (cmd is playpause, next, or prev)\n"
-@"  open_app {\"name\":\"Safari\"}\n"
-@"  web_search {\"query\":\"...\"}\n"
-@"  set_mode {\"mode\":\"media\"}   (system, media, productivity, classic, shortcuts)\n"
-@"  toggle_pomodoro {}\n  toggle_caffeine {}\n"
-@"  show_mirror {}\n  hide_mirror {}\n  open_settings {}\n  open_layout_editor {}\n"
-@"  set_tile {\"tile\":\"gpu\",\"show\":false}   (tile token; show true/false; optional size big/small)\n"
-@"  lock {}\n  sleep_display {}\n  dark_mode {}\n  mission_control {}\n"
-@"  run_shortcut {\"name\":\"X\"}\n"
-@"  reply {}   (for questions/chitchat — put the answer in \"say\")\n"
-@"Use ONLY these EXACT action names. If asked to do anything else — especially anything destructive like quitting or deleting apps, sending messages, or shutting down — DO NOT invent an action; use reply and politely decline. Keep \"say\" under 14 words.";
+// The system prompt is generated from the single source of truth (the command
+// registry) so the model's vocabulary can never drift from what we dispatch.
+static NSString *systemPrompt(void) {
+    return [NSString stringWithFormat:
+        @"You are PulseBar, a Mac assistant that controls safe system settings and the PulseBar Touch Bar itself. "
+        @"For EVERY user message reply with ONE JSON object and NOTHING else (no markdown, no code fences):\n"
+        @"{\"action\":\"<name>\",\"args\":{...},\"say\":\"<short sentence>\"}\n\n%@\n\n"
+        @"Use ONLY these exact action names. If asked for anything else — especially anything destructive "
+        @"(quitting or deleting apps, sending messages, shutting down) — DO NOT invent an action; use reply and "
+        @"politely decline. Keep \"say\" under 14 words.",
+        [PBVoiceCommands promptVocabulary]];
+}
 
 @implementation PBAgent {
     NSMutableArray<NSDictionary *> *_history;
@@ -85,7 +78,22 @@ static NSString *humanArgs(NSDictionary *args) {   // {"percent":25} -> " · per
 - (void)ask:(NSString *)text done:(void (^)(NSString *, NSString *))done {
     [_history addObject:@{ @"role": @"user", @"content": text }];
 
-    NSMutableArray *messages = [NSMutableArray arrayWithObject:@{ @"role": @"system", @"content": kSystemPrompt }];
+    // Fast path: a confident deterministic match runs instantly and offline,
+    // bypassing the model entirely. The model is only the fallback.
+    PBIntent *intent = [PBVoiceCommands parse:text appResolver:self.appResolver];
+    if (intent && intent.confidence >= 0.8) {
+        NSString *res = self.runner ? [self.runner agentRunAction:intent.action args:intent.args] : nil;
+        BOOL silent = (intent.category == PBCatQuery || intent.category == PBCatReply);
+        NSString *interp = silent ? nil : [NSString stringWithFormat:@"⚙ %@%@", intent.action, humanArgs(intent.args)];
+        NSString *reply = res.length ? res : @"Done.";
+        [_history addObject:@{ @"role": @"assistant", @"content": reply }];
+        PBLog(@"agent(fast): '%@' -> %@", text, interp ?: reply);
+        PBLogConversation(text, @"(fast-path)", intent.action, reply);
+        dispatch_async(dispatch_get_main_queue(), ^{ done(interp, reply); });
+        return;
+    }
+
+    NSMutableArray *messages = [NSMutableArray arrayWithObject:@{ @"role": @"system", @"content": systemPrompt() }];
     [messages addObjectsFromArray:_history];
     NSDictionary *body = @{ @"model": self.model ?: @"gemma3:4b", @"messages": messages,
                             @"stream": @NO, @"options": @{ @"temperature": @0.2 } };
@@ -111,7 +119,12 @@ static NSString *humanArgs(NSDictionary *args) {   // {"percent":25} -> " · per
             NSDictionary *args = [act[@"args"] isKindOfClass:NSDictionary.class] ? act[@"args"] : @{};
             NSString *say = act[@"say"]; if (!say.length) say = args[@"say"];   // reply puts it in args
             reply = say.length ? say : cleanText(content);                      // never show raw JSON
-            if (action.length && ![action isEqualToString:@"reply"]) {
+            BOOL actionable = action.length && ![action isEqualToString:@"reply"];
+            if (actionable && ![PBVoiceCommands isKnownAction:action]) {
+                // Model invented an action outside the vetted vocabulary — refuse safely.
+                reply = say.length ? say : @"Sorry, I can't do that.";
+                action = @"reply";
+            } else if (actionable) {
                 NSString *res = self2.runner ? [self2.runner agentRunAction:action args:args] : nil;
                 interp = [NSString stringWithFormat:@"⚙ %@%@", action, humanArgs(args)];
                 if (res.length) reply = res;
