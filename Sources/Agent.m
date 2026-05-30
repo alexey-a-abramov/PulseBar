@@ -63,6 +63,17 @@ static NSDictionary *extractJSON(NSString *s) {
     return nil;
 }
 
+static NSString *cleanText(NSString *s) {   // strip code fences / stray JSON braces for display
+    NSString *t = [s stringByReplacingOccurrencesOfString:@"```json" withString:@""];
+    t = [[t stringByReplacingOccurrencesOfString:@"```" withString:@""] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return t.length ? t : @"(no reply)";
+}
+static NSString *humanArgs(NSDictionary *args) {   // {"percent":25} -> " · percent 25"
+    NSMutableArray *parts = [NSMutableArray array];
+    for (NSString *k in args) { if ([k isEqualToString:@"say"]) continue; [parts addObject:[NSString stringWithFormat:@"%@ %@", k, args[k]]]; }
+    return parts.count ? [@" · " stringByAppendingString:[parts componentsJoinedByString:@", "]] : @"";
+}
+
 - (void)ask:(NSString *)text done:(void (^)(NSString *, NSString *))done {
     [_history addObject:@{ @"role": @"user", @"content": text }];
 
@@ -80,26 +91,26 @@ static NSDictionary *extractJSON(NSString *s) {
     __weak PBAgent *ws = self;
     [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
         PBAgent *self2 = ws; if (!self2) return;
-        NSString *interp = nil, *reply = nil;
+        NSString *interp = nil, *reply = nil, *content = @"", *action = nil;
         if (err || !data) {
             reply = [NSString stringWithFormat:@"(agent offline: %@)", err.localizedDescription ?: @"no response"];
         } else {
             NSDictionary *j = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-            NSString *content = j[@"message"][@"content"] ?: @"";
+            content = j[@"message"][@"content"] ?: @"";
             [self2->_history addObject:@{ @"role": @"assistant", @"content": content }];
             NSDictionary *act = extractJSON(content);
-            NSString *action = act[@"action"];
+            action = act[@"action"];
             NSDictionary *args = [act[@"args"] isKindOfClass:NSDictionary.class] ? act[@"args"] : @{};
-            NSString *say = act[@"say"];
-            if (!say.length && [act[@"args"] isKindOfClass:NSDictionary.class]) say = act[@"args"][@"say"];   // reply puts it in args
-            reply = say.length ? say : (content.length ? content : @"(no reply)");
+            NSString *say = act[@"say"]; if (!say.length) say = args[@"say"];   // reply puts it in args
+            reply = say.length ? say : cleanText(content);                      // never show raw JSON
             if (action.length && ![action isEqualToString:@"reply"]) {
                 NSString *res = self2.runner ? [self2.runner agentRunAction:action args:args] : nil;
-                interp = [NSString stringWithFormat:@"⚙ %@ %@", action, args.count ? args : @""];
+                interp = [NSString stringWithFormat:@"⚙ %@%@", action, humanArgs(args)];
                 if (res.length) reply = res;
             }
-            PBLog(@"agent: '%@' -> %@", text, interp ?: reply);
         }
+        PBLog(@"agent: '%@' -> %@", text, interp ?: reply);
+        PBLogConversation(text, content, action, reply);   // save the turn for analysis
         dispatch_async(dispatch_get_main_queue(), ^{ done(interp, reply); });
     }] resume];
 }

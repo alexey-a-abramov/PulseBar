@@ -45,6 +45,21 @@ static void onUncaughtException(NSException *e) {
     for (NSString *frame in e.callStackSymbols) writeStr([[frame stringByAppendingString:@"\n"] UTF8String]);
 }
 
+NSString *PBConversationsFile(void) { return [PBLogDirectory() stringByAppendingPathComponent:@"conversations.jsonl"]; }
+
+void PBLogConversation(NSString *prompt, NSString *raw, NSString *action, NSString *reply) {
+    NSDictionary *turn = @{ @"ts": @([[NSDate date] timeIntervalSince1970]),
+                            @"prompt": prompt ?: @"", @"model": raw ?: @"",
+                            @"action": action ?: @"", @"reply": reply ?: @"" };
+    NSData *d = [NSJSONSerialization dataWithJSONObject:turn options:0 error:nil];
+    if (!d) return;
+    NSString *path = PBConversationsFile();
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![fm fileExistsAtPath:path]) [fm createFileAtPath:path contents:nil attributes:nil];
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (fh) { [fh seekToEndOfFile]; [fh writeData:d]; [fh writeData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]]; [fh closeFile]; }
+}
+
 void PBLogInit(void) {
     NSFileManager *fm = [NSFileManager defaultManager];
     [fm createDirectoryAtPath:PBLogDirectory() withIntermediateDirectories:YES attributes:nil error:nil];

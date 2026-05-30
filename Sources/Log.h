@@ -10,3 +10,7 @@ void      PBLogv(NSString *fmt, ...) NS_FORMAT_FUNCTION(1, 2);
 #define   PBLog(...) PBLogv(__VA_ARGS__)
 NSString *PBLogDirectory(void);
 NSString *PBLogFile(void);
+
+// Append one agent turn as a JSON line to conversations.jsonl (for later analysis).
+void      PBLogConversation(NSString *prompt, NSString *modelRaw, NSString *action, NSString *reply);
+NSString *PBConversationsFile(void);

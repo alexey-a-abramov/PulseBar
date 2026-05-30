@@ -539,7 +539,8 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     if (pbDebug()) NSLog(@"[PB] fireTap tile=%ld", (long)t->type);
     id<BarActionDelegate> d = self.actionDelegate;
     switch (t->type) {
-        case TTAB:      [self setMode:t->arg animated:self.animateModeSwitch]; [d barDidChangeMode:t->arg]; break;
+        case TTAB: { NSInteger target = (t->arg == _mode) ? _prevMode : t->arg;   // tap the active pill -> jump to your last mode
+                     [self setMode:target animated:self.animateModeSwitch]; [d barDidChangeMode:target]; break; }
         case TCPU:      self.showCores = !self.showCores; [self setNeedsDisplay:YES]; break;
         case TSETTINGS: [d barOpenSettings]; break;
         case TAGENT:    [d barOpenAgent]; break;
