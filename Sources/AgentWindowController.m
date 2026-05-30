@@ -30,6 +30,7 @@
         backing:NSBackingStoreBuffered defer:NO];
     w.title = @"PulseBar Agent";
     w.releasedWhenClosed = NO;
+    w.level = NSFloatingWindowLevel;   // accessory app: keep it above other windows
     w.minSize = NSMakeSize(380, 360);
     if ((self = [super initWithWindow:w])) { _agent = agent; [self build]; }
     return self;
@@ -60,6 +61,8 @@
     _input = [[NSTextField alloc] initWithFrame:NSMakeRect(12, 12, W - 24 - 76 - 36, 28)];
     _input.placeholderString = @"Ask or command… (or tap 🎙 to speak)";
     _input.delegate = self;
+    _input.bezelStyle = NSTextFieldRoundedBezel;
+    _input.font = [NSFont systemFontOfSize:13];
     _input.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
     [c addSubview:_input];
 
@@ -72,10 +75,11 @@
     _send = [NSButton buttonWithTitle:@"Send" target:self action:@selector(send:)];
     _send.frame = NSMakeRect(W - 12 - 70, 11, 70, 30);
     _send.bezelStyle = NSBezelStyleRounded; _send.keyEquivalent = @"\r";
+    _send.bezelColor = [NSColor systemBlueColor];
     _send.autoresizingMask = NSViewMinXMargin | NSViewMaxYMargin;
     [c addSubview:_send];
 
-    [self appendRole:@"PulseBar" text:@"Hi! Tell me what to do — e.g. “mute”, “brightness 80”, “play music”, or ask a question." color:[NSColor systemPurpleColor]];
+    [self appendRole:@"PulseBar" text:@"Hi! Tell me what to do — e.g. “mute”, “brightness 80”, “play music”, or ask a question." color:[NSColor systemPurpleColor] align:NSTextAlignmentLeft];
 }
 
 - (void)present {
@@ -95,13 +99,16 @@
     }];
 }
 
-- (void)appendRole:(NSString *)who text:(NSString *)text color:(NSColor *)color {
+- (void)appendRole:(NSString *)who text:(NSString *)text color:(NSColor *)color align:(NSTextAlignment)align {
     NSTextStorage *ts = _transcript.textStorage;
+    NSMutableParagraphStyle *ps = [NSMutableParagraphStyle new];
+    ps.alignment = align; ps.lineSpacing = 2; ps.paragraphSpacingBefore = 5; ps.paragraphSpacing = 11;
+    if (align == NSTextAlignmentRight) ps.headIndent = 90; else ps.tailIndent = -90;   // gutter on the far side → chat feel
     [ts beginEditing];
-    NSDictionary *nameAttr = @{ NSFontAttributeName: [NSFont boldSystemFontOfSize:12], NSForegroundColorAttributeName: color };
-    NSDictionary *bodyAttr = @{ NSFontAttributeName: [NSFont systemFontOfSize:12.5], NSForegroundColorAttributeName: [NSColor labelColor] };
-    [ts appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%@\n", who] attributes:nameAttr]];
-    [ts appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%@\n\n", text] attributes:bodyAttr]];
+    NSDictionary *nameAttr = @{ NSFontAttributeName:[NSFont boldSystemFontOfSize:10.5], NSForegroundColorAttributeName:color, NSParagraphStyleAttributeName:ps };
+    NSDictionary *bodyAttr = @{ NSFontAttributeName:[NSFont systemFontOfSize:13], NSForegroundColorAttributeName:[NSColor labelColor], NSParagraphStyleAttributeName:ps };
+    [ts appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%@\n", who.uppercaseString] attributes:nameAttr]];
+    [ts appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%@\n", text] attributes:bodyAttr]];
     [ts endEditing];
     [_transcript scrollRangeToVisible:NSMakeRange(ts.length, 0)];
 }
@@ -110,11 +117,11 @@
     NSString *text = [_input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (!text.length || _busy) return;
     _input.stringValue = @"";
-    [self appendRole:@"You" text:text color:[NSColor systemBlueColor]];
+    [self appendRole:@"You" text:text color:[NSColor systemBlueColor] align:NSTextAlignmentRight];
     _busy = YES; _send.enabled = NO; _status.stringValue = @"…thinking";
     [_agent ask:text done:^(NSString *interp, NSString *reply) {
-        if (interp.length) [self appendRole:@"Action" text:interp color:[NSColor systemTealColor]];
-        [self appendRole:@"PulseBar" text:reply ?: @"(no reply)" color:[NSColor systemPurpleColor]];
+        if (interp.length) [self appendRole:@"Action" text:interp color:[NSColor systemTealColor] align:NSTextAlignmentLeft];
+        [self appendRole:@"PulseBar" text:reply ?: @"(no reply)" color:[NSColor systemPurpleColor] align:NSTextAlignmentLeft];
         self->_busy = NO; self->_send.enabled = YES;
         [self refreshStatus];
     }];
