@@ -67,9 +67,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
         if ([ud boolForKey:@"fullBar"]) [self applyFullBar:YES];                 // hide Control Strip
     }
 
-    [self tick];
-    self.timer = [NSTimer timerWithTimeInterval:1.0 target:self selector:@selector(tick) userInfo:nil repeats:YES];
-    [[NSRunLoop currentRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
+    [self registerSleepWake];
+    [self resumeSampling];
 
     const char *sq = getenv("PULSEBAR_SELFQUIT");
     if (sq) { double s = atof(sq); if (s > 0) [self performSelector:@selector(quit) withObject:nil afterDelay:s]; }
@@ -77,6 +76,23 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 }
 
 - (void)applicationWillTerminate:(NSNotification *)note { [self detach]; }
+
+// Pause all sampling while the screen / system is asleep (the bar isn't exposed),
+// so PulseBar uses zero CPU when you can't see it.
+- (void)registerSleepWake {
+    NSNotificationCenter *wc = [[NSWorkspace sharedWorkspace] notificationCenter];
+    [wc addObserver:self selector:@selector(pauseSampling)  name:NSWorkspaceScreensDidSleepNotification object:nil];
+    [wc addObserver:self selector:@selector(resumeSampling) name:NSWorkspaceScreensDidWakeNotification  object:nil];
+    [wc addObserver:self selector:@selector(pauseSampling)  name:NSWorkspaceWillSleepNotification       object:nil];
+    [wc addObserver:self selector:@selector(resumeSampling) name:NSWorkspaceDidWakeNotification          object:nil];
+}
+- (void)pauseSampling { [self.timer invalidate]; self.timer = nil; }
+- (void)resumeSampling {
+    if (self.timer) return;
+    [self tick];
+    self.timer = [NSTimer timerWithTimeInterval:1.0 target:self selector:@selector(tick) userInfo:nil repeats:YES];
+    [[NSRunLoop currentRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
+}
 
 - (void)installSignalHandlers {
     signal(SIGTERM, SIG_IGN); signal(SIGINT, SIG_IGN);
