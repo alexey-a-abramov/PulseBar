@@ -170,21 +170,31 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 #pragma mark - sampling
 
 - (void)tick {
-    double cpu = StatsCPUPercent();
-    int    n   = StatsPerCore(_cores, 128);
-    MemInfo mem = StatsMemory();
-    NetSample net = StatsNetwork();
-    double gpu = StatsGPUPercent();
-    DiskIO disk = StatsDiskIO();
-    DiskSpace space = StatsDiskSpace();
-    BatteryInfo bat = StatsBattery();
-    if (self.showTopProc) { if (_tick % 3 == 0) StatsTopProcess(_topBuf, sizeof(_topBuf), &_topCPU); }
-    else { _topBuf[0] = '\0'; _topCPU = 0; }
+    // Only sample what the active mode actually shows — keeps idle modes cheap.
+    NSInteger mode = self.barView.mode;
+    BOOL sys = (mode == BarModeSystem);
+    BOOL med = (mode == BarModeMedia || mode == BarModeClassic);
+
+    double cpu      = StatsCPUPercent();   // cheap; also drives the Control-Strip %
+    MemInfo mem     = StatsMemory();       // cheap
+    BatteryInfo bat = StatsBattery();      // battery tile is pinned in every mode
+
+    int n = 0; double gpu = -1;
+    NetSample net = {0, 0}; DiskIO disk = {0, 0}; DiskSpace space = {0, 0};
+    if (sys) {
+        n     = StatsPerCore(_cores, 128);
+        gpu   = StatsGPUPercent();
+        net   = StatsNetwork();
+        disk  = StatsDiskIO();
+        space = StatsDiskSpace();
+        if (self.showTopProc) { if (_tick % 3 == 0) StatsTopProcess(_topBuf, sizeof(_topBuf), &_topCPU); }
+        else { _topBuf[0] = '\0'; _topCPU = 0; }
+    } else { _topBuf[0] = '\0'; _topCPU = 0; }
     _tick++;
 
-    CtlMediaRefresh();
-    NowPlaying np = CtlNowPlaying();
-    float vol = CtlGetVolume(); BOOL mute = CtlGetMute(); float bright = CtlGetBrightness();
+    NowPlaying np; memset(&np, 0, sizeof(np));
+    float vol = 0, bright = 0; BOOL mute = NO;
+    if (med) { CtlMediaRefresh(); np = CtlNowPlaying(); vol = CtlGetVolume(); mute = CtlGetMute(); bright = CtlGetBrightness(); }
 
     [self.pomo tick:1.0];
 
