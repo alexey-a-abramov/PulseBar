@@ -6,6 +6,7 @@
 #import "PrivateAPI.h"
 #import "PBDefaults.h"
 #import "TouchBarPresenter.h"
+#import "MirrorController.h"
 #import "BarView.h"
 #import "Stats.h"
 #import "Controls.h"
@@ -19,11 +20,10 @@
 #import <signal.h>
 #import <ApplicationServices/ApplicationServices.h>
 
-@interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate, PBAgentHost, PBModifierMonitorDelegate>
+@interface AppDelegate () <BarActionDelegate, SettingsDelegate, PBAgentHost, PBModifierMonitorDelegate>
 @property (nonatomic, strong) PBTouchBarPresenter  *presenter;
 @property (nonatomic, strong) BarView              *barView;
-@property (nonatomic, strong) NSPanel              *mirrorPanel;
-@property (nonatomic, strong) BarView              *mirrorBar;
+@property (nonatomic, strong) PBMirrorController   *mirror;
 @property (nonatomic, strong) NSStatusItem         *statusItem;
 @property (nonatomic, strong) NSTimer              *timer;
 @property (nonatomic, strong) dispatch_source_t     sigTerm, sigInt;
@@ -39,7 +39,6 @@
     char        _topBuf[256];
     double      _topCPU;
     NSInteger   _tick;
-    BOOL        _terminating;
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
     NSMenuItem *_fnItem;
@@ -88,7 +87,7 @@
     PBLog(@"launched (spi=%@)", self.presenter.spiAvailable ? @"available" : @"UNAVAILABLE");
 }
 
-- (void)applicationWillTerminate:(NSNotification *)note { _terminating = YES; [self detach]; }
+- (void)applicationWillTerminate:(NSNotification *)note { [self.mirror suspendPersistence]; [self detach]; }
 
 // Pause all sampling while the screen / system is asleep (the bar isn't exposed),
 // so PulseBar uses zero CPU when you can't see it.
@@ -161,44 +160,15 @@
 
 #pragma mark - desktop mirror (companion window — exact, clickable copy of the bar)
 
-- (void)buildMirror {
-    CGFloat maxW = [NSScreen mainScreen].visibleFrame.size.width - 80;
-    CGFloat scale = MIN(1.5, maxW / 1085.0); if (scale < 0.9) scale = 0.9;
-    CGFloat w = 1085 * scale, h = 30 * scale;
-    NSPanel *p = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, w, h)
-        styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskNonactivatingPanel)
-        backing:NSBackingStoreBuffered defer:NO];
-    p.title = @"PulseBar — Touch Bar Mirror";
-    p.level = NSFloatingWindowLevel; p.hidesOnDeactivate = NO; p.releasedWhenClosed = NO;
-    p.movableByWindowBackground = YES; p.delegate = self;
-    p.becomesKeyOnlyIfNeeded = YES;   // clicking it must NOT steal key focus / dismiss the system-modal Touch Bar
-
-    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
-    self.mirrorBar = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
-    self.mirrorBar.actionDelegate = self;
-    self.mirrorBar.pomodoro = self.pomo;
-    self.mirrorBar.animateModeSwitch = YES;
-    self.mirrorBar.caffeinated = (self.caffeine != nil);
-    [self.mirrorBar setMode:self.barView.mode animated:NO];
-    [container addSubview:self.mirrorBar];
-    self.mirrorBar.bounds = NSMakeRect(0, 0, 1085, 30);   // bounds < frame → scales the drawing up
-    p.contentView = container;
-    self.mirrorPanel = p;
-}
-
 - (void)showMirror {
-    if (!self.mirrorPanel) [self buildMirror];
-    NSRect sf = [NSScreen mainScreen].visibleFrame, wf = self.mirrorPanel.frame;
-    [self.mirrorPanel setFrameOrigin:NSMakePoint(sf.origin.x + (sf.size.width - wf.size.width) / 2, sf.origin.y + 36)];
-    [self.mirrorPanel orderFront:nil];
-    [NSUserDefaults.standardUserDefaults setBool:YES forKey:PBKeyMirror];
+    if (!self.mirror) {
+        self.mirror = [[PBMirrorController alloc] initWithActionDelegate:self pomodoro:self.pomo mode:self.barView.mode];
+        self.mirror.bar.caffeinated = (self.caffeine != nil);
+    }
+    [self.mirror show];
 }
-- (void)hideMirror { [self.mirrorPanel orderOut:nil]; [NSUserDefaults.standardUserDefaults setBool:NO forKey:PBKeyMirror]; }
-- (void)toggleMirror { (self.mirrorPanel.isVisible) ? [self hideMirror] : [self showMirror]; }
-- (void)windowWillClose:(NSNotification *)n {
-    if (_terminating) return;   // don't persist "hidden" just because the app is quitting
-    if (n.object == self.mirrorPanel) [NSUserDefaults.standardUserDefaults setBool:NO forKey:PBKeyMirror];
-}
+- (void)hideMirror   { [self.mirror hide]; }
+- (void)toggleMirror { self.mirror.visible ? [self.mirror hide] : [self showMirror]; }
 
 #pragma mark - Touch Bar attach / detach
 
@@ -247,9 +217,9 @@
                      nowPlaying:np volume:vol mute:mute brightness:bright];
     [self.presenter setStripTitle:[NSString stringWithFormat:@"⟂ %.0f%%", cpu]];
 
-    if (self.mirrorPanel.isVisible) {   // keep the desktop mirror in lock-step
-        self.mirrorBar.uptime = self.barView.uptime;
-        [self.mirrorBar updateWithCPU:cpu cores:_cores count:n mem:mem net:net gpu:gpu
+    if (self.mirror.visible) {   // keep the desktop mirror in lock-step
+        self.mirror.bar.uptime = self.barView.uptime;
+        [self.mirror.bar updateWithCPU:cpu cores:_cores count:n mem:mem net:net gpu:gpu
                                  disk:disk space:space battery:bat topProc:tp topCPU:_topCPU
                            nowPlaying:np volume:vol mute:mute brightness:bright];
     }
@@ -279,7 +249,7 @@
 
 - (void)barDidChangeMode:(NSInteger)mode {
     [self.barView setMode:mode animated:self.barView.animateModeSwitch];        // touch bar: instant
-    if (self.mirrorBar) [self.mirrorBar setMode:mode animated:self.mirrorBar.animateModeSwitch]; // mirror: animated
+    if (self.mirror.bar) [self.mirror.bar setMode:mode animated:self.mirror.bar.animateModeSwitch]; // mirror: animated
     [NSUserDefaults.standardUserDefaults setInteger:mode forKey:PBKeyMode];
 }
 
@@ -291,8 +261,8 @@
         self.caffeine = t;
     }
     self.barView.caffeinated = (self.caffeine != nil);
-    self.mirrorBar.caffeinated = (self.caffeine != nil);
-    [self.barView setNeedsDisplay:YES]; [self.mirrorBar setNeedsDisplay:YES];
+    self.mirror.bar.caffeinated = (self.caffeine != nil);
+    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
 }
 
 - (void)barRunShortcut:(NSString *)a {
@@ -340,20 +310,20 @@
 - (void)switchRecent {
     NSInteger r = [self.barView recentMode];
     [self.barView setMode:r animated:self.barView.animateModeSwitch];
-    [self.mirrorBar setMode:r animated:self.mirrorBar.animateModeSwitch];
+    [self.mirror.bar setMode:r animated:self.mirror.bar.animateModeSwitch];
     [NSUserDefaults.standardUserDefaults setInteger:r forKey:PBKeyMode];
 }
 - (void)showAppOverlay {
     NSRunningApplication *app = [NSWorkspace sharedWorkspace].frontmostApplication;
     NSString *name = app.localizedName ?: @"App"; NSImage *icon = app.icon;
     self.barView.appName = name;   self.barView.appIcon = icon;   self.barView.appOverlay = YES;
-    self.mirrorBar.appName = name; self.mirrorBar.appIcon = icon; self.mirrorBar.appOverlay = YES;
-    [self.barView setNeedsDisplay:YES]; [self.mirrorBar setNeedsDisplay:YES];
+    self.mirror.bar.appName = name; self.mirror.bar.appIcon = icon; self.mirror.bar.appOverlay = YES;
+    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
 }
 - (void)hideAppOverlay {
     if (!self.barView.appOverlay) return;
-    self.barView.appOverlay = NO; self.mirrorBar.appOverlay = NO;
-    [self.barView setNeedsDisplay:YES]; [self.mirrorBar setNeedsDisplay:YES];
+    self.barView.appOverlay = NO; self.mirror.bar.appOverlay = NO;
+    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
 }
 - (void)toggleModifiers {
     BOOL on = ![NSUserDefaults.standardUserDefaults boolForKey:PBKeyModifiers];
@@ -376,7 +346,7 @@
     if (!self.layoutEditor) self.layoutEditor = [LayoutEditorWindowController new];
     [self.layoutEditor present];
 }
-- (void)quit { _terminating = YES; [self detach]; [NSApp terminate:nil]; }
+- (void)quit { [self.mirror suspendPersistence]; [self detach]; [NSApp terminate:nil]; }
 
 #pragma mark - SettingsDelegate
 
@@ -409,7 +379,7 @@
 // Redraw the live bar (and mirror) when the size editor saves a change.
 - (void)layoutChanged:(NSNotification *)n {
     [self.barView setNeedsDisplay:YES];
-    [self.mirrorBar setNeedsDisplay:YES];
+    [self.mirror.bar setNeedsDisplay:YES];
 }
 
 #pragma mark - full-bar takeover (reversible)
