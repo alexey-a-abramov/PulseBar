@@ -71,4 +71,7 @@ extern NSString * const PBLayoutChangedNotification;
 // Ordered specs for a mode. Each dict: @"type"(NSNumber TileType), @"name"(NSString),
 // @"weight"(NSNumber), @"prio"(NSNumber), @"minW"(NSNumber).
 + (NSArray<NSDictionary *> *)defaultLayoutForMode:(NSInteger)mode;
+// The NSUserDefaults key for a tile's size/priority/visibility override. The
+// editor and the renderer MUST agree on this, so both go through here.
++ (NSString *)overrideKeyForMode:(NSInteger)mode type:(NSInteger)type;
 @end

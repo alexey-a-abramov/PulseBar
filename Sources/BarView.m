@@ -9,6 +9,8 @@
 
 NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
 
+// NOTE: persisted layout overrides are keyed by tileToken()/modeToken(), not by
+// these ordinals, so reordering is safe — but keep tileToken() in sync.
 typedef NS_ENUM(NSInteger, TileType) {
     TCPU, TMEM, TGPU, TNET, TDISK, TUPTIME,
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
@@ -107,9 +109,33 @@ static NSString *tileName(TileType t) {
     }
 }
 
-// Per-tile override key, e.g. "PBTile.0.3" (mode 0, TileType 3).
-static NSString *tileOverrideKey(NSInteger mode, TileType t) {
-    return [NSString stringWithFormat:@"PBTile.%ld.%d", (long)mode, (int)t];
+// Stable string tokens for the persisted override keys. These are written to
+// disk, so they MUST stay frozen even if the TileType / BarMode enums are
+// reordered or extended — do not rename existing tokens.
+static NSString *tileToken(TileType t) {
+    switch (t) {
+        case TCPU: return @"cpu";          case TMEM: return @"mem";        case TGPU: return @"gpu";
+        case TNET: return @"net";          case TDISK: return @"disk";      case TUPTIME: return @"uptime";
+        case TBATT: return @"batt";        case TMEDIA: return @"media";    case TVOL: return @"vol";
+        case TMUTE: return @"mute";        case TBRIGHT: return @"bright";  case TPOMO: return @"pomo";
+        case TCAFFEINE: return @"caffeine";case TSC_LOCK: return @"sc_lock";case TSC_SLEEP: return @"sc_sleep";
+        case TSC_SHOT: return @"sc_shot";  case TSC_DARK: return @"sc_dark";case TSC_MISSION: return @"sc_mission";
+        case TSC_NOTE: return @"sc_note";  case TSC_LAUNCH: return @"sc_launch"; case TSC_ACTIVITY: return @"sc_activity";
+        case TSC_REMIND: return @"sc_remind";
+        default: return [NSString stringWithFormat:@"t%d", (int)t];
+    }
+}
+static NSString *modeToken(NSInteger m) {
+    switch (m) {
+        case BarModeSystem: return @"system";  case BarModeMedia: return @"media";
+        case BarModeProductivity: return @"productivity"; case BarModeClassic: return @"classic";
+        case BarModeShortcuts: return @"shortcuts";
+        default: return [NSString stringWithFormat:@"m%ld", (long)m];
+    }
+}
+// Per-tile override key, e.g. "PBTile.system.cpu" — stable across enum changes.
+static NSString *overrideKey(NSInteger mode, TileType t) {
+    return [NSString stringWithFormat:@"PBTile.%@.%@", modeToken(mode), tileToken(t)];
 }
 
 // Overlay persisted size-editor overrides on the built-in defaults, dropping
@@ -118,7 +144,7 @@ static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     int n = *pn, out = 0;
     for (int i = 0; i < n; i++) {
-        NSDictionary *o = [ud dictionaryForKey:tileOverrideKey(mode, defs[i].type)];
+        NSDictionary *o = [ud dictionaryForKey:overrideKey(mode, defs[i].type)];
         if (o) {
             if ([o[@"hidden"] boolValue]) continue;                       // force-hidden → drop
             if (o[@"w"])    defs[i].weight = MAX(0.2, [o[@"w"] doubleValue]);
@@ -712,6 +738,10 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         case BarModeShortcuts:    return @"Shortcuts";
         default:                  return @"Mode";
     }
+}
+
++ (NSString *)overrideKeyForMode:(NSInteger)mode type:(NSInteger)type {
+    return overrideKey(mode, (TileType)type);
 }
 
 + (NSArray<NSDictionary *> *)defaultLayoutForMode:(NSInteger)mode {

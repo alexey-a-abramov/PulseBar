@@ -116,7 +116,7 @@ static NSTextField *lbl(NSString *s, NSRect f, CGFloat sz, BOOL secondary) {
 
 #pragma mark - persistence
 
-- (NSString *)keyFor:(NSInteger)type { return [NSString stringWithFormat:@"PBTile.%ld.%d", (long)_mode, (int)type]; }
+- (NSString *)keyFor:(NSInteger)type { return [BarView overrideKeyForMode:_mode type:type]; }
 
 - (void)writeRow:(NSInteger)i {
     NSInteger type = _types[i].integerValue;

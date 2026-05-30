@@ -38,6 +38,15 @@ int main(void) { @autoreleasepool {
     [NSApplication sharedApplication];
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
 
+    // Resolve override keys by tile NAME so the test never hardcodes ordinals.
+    NSString *(^keyForName)(NSString *) = ^NSString *(NSString *name) {
+        for (NSDictionary *d in [BarView defaultLayoutForMode:BarModeSystem])
+            if ([d[@"name"] isEqualToString:name])
+                return [BarView overrideKeyForMode:BarModeSystem type:[d[@"type"] integerValue]];
+        return nil;
+    };
+    NSString *kCPU = keyForName(@"CPU"), *kGPU = keyForName(@"GPU"), *kUP = keyForName(@"Uptime");
+
     // Two stacked System bars: row 0 = defaults, row 1 = with overrides.
     CGFloat W = 1004, H = 30, S = 2.4; int gap = 12;
     BarView *bar = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, W, H)];
@@ -52,14 +61,14 @@ int main(void) { @autoreleasepool {
     [[NSColor colorWithCalibratedWhite:0.18 alpha:1] setFill]; NSRectFill(NSMakeRect(0, 0, pw, ph));
 
     // Row 0: defaults (no overrides).
-    [ud removeObjectForKey:@"PBTile.0.0"]; [ud removeObjectForKey:@"PBTile.0.2"]; [ud removeObjectForKey:@"PBTile.0.5"];
+    [ud removeObjectForKey:kCPU]; [ud removeObjectForKey:kGPU]; [ud removeObjectForKey:kUP];
     NSImage *def = [[NSImage alloc] initWithData:[bar dataWithPDFInsideRect:bar.bounds]];
     [def drawInRect:NSMakeRect(0, ph - rowPix, pw, rowPix) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
 
-    // Row 1: hide GPU (type 2) + Uptime (type 5), make CPU (type 0) much wider.
-    [ud setObject:@{@"hidden":@YES} forKey:@"PBTile.0.2"];
-    [ud setObject:@{@"hidden":@YES} forKey:@"PBTile.0.5"];
-    [ud setObject:@{@"hidden":@NO, @"w":@3.5, @"prio":@100} forKey:@"PBTile.0.0"];
+    // Row 1: hide GPU + Uptime, make CPU much wider.
+    [ud setObject:@{@"hidden":@YES} forKey:kGPU];
+    [ud setObject:@{@"hidden":@YES} forKey:kUP];
+    [ud setObject:@{@"hidden":@NO, @"w":@3.5, @"prio":@100} forKey:kCPU];
     [bar setNeedsDisplay:YES];
     NSImage *ovr = [[NSImage alloc] initWithData:[bar dataWithPDFInsideRect:bar.bounds]];
     [ovr drawInRect:NSMakeRect(0, 0, pw, rowPix) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
@@ -76,7 +85,7 @@ int main(void) { @autoreleasepool {
     printf("editor png written\n");
 
     // Cleanup so we don't persist test overrides.
-    for (NSString *k in @[@"PBTile.0.0", @"PBTile.0.2", @"PBTile.0.5"]) [ud removeObjectForKey:k];
+    for (NSString *k in @[kCPU, kGPU, kUP]) [ud removeObjectForKey:k];
     (void)hidGpu;
     return 0;
 }}
