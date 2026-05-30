@@ -83,6 +83,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
     const char *sq = getenv("PULSEBAR_SELFQUIT");
     if (sq) { double s = atof(sq); if (s > 0) [self performSelector:@selector(quit) withObject:nil afterDelay:s]; }
+    if (getenv("PULSEBAR_OPEN_AGENT")) [self barOpenAgent];   // test hook
     PBLog(@"launched (spi=%@)", _spiOK ? @"available" : @"UNAVAILABLE");
 }
 
@@ -161,6 +162,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     NSMenu *menu = [[NSMenu alloc] init];
     [[menu addItemWithTitle:@"PulseBar — live system monitor" action:nil keyEquivalent:@""] setEnabled:NO];
     [menu addItem:[NSMenuItem separatorItem]];
+    [menu addItemWithTitle:@"Ask the Agent…"          action:@selector(barOpenAgent)   keyEquivalent:@"a"];
     [menu addItemWithTitle:@"Settings…"               action:@selector(showSettings)   keyEquivalent:@","];
     [menu addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror) keyEquivalent:@"m"];
     [menu addItemWithTitle:@"Re-attach to Touch Bar"  action:@selector(attachToTouchBar) keyEquivalent:@"r"];
