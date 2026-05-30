@@ -38,6 +38,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic, weak) Pomodoro *pomodoro;
 @property (nonatomic) BOOL showCores;          // CPU tile: sparkline vs per-core
 @property (nonatomic) BOOL caffeinated;        // caffeine toggle state
+@property (nonatomic) BOOL animateModeSwitch;  // NO on the live Touch Bar (DFR), YES on desktop
 @property (nonatomic) double uptime;           // seconds since boot (System mode)
 @property (nonatomic, readonly) NSInteger mode;
 

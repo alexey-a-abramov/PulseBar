@@ -126,6 +126,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [self.barView.heightAnchor constraintEqualToConstant:30].active = YES;
     self.barView.actionDelegate = self;
     self.barView.pomodoro = self.pomo;
+    self.barView.animateModeSwitch = NO;   // don't hammer the live DFR with a 60fps transition
 
     self.barItem = [[NSCustomTouchBarItem alloc] initWithIdentifier:kBarItemID];
     self.barItem.view = self.barView;
@@ -175,11 +176,13 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     p.title = @"PulseBar — Touch Bar Mirror";
     p.level = NSFloatingWindowLevel; p.hidesOnDeactivate = NO; p.releasedWhenClosed = NO;
     p.movableByWindowBackground = YES; p.delegate = self;
+    p.becomesKeyOnlyIfNeeded = YES;   // clicking it must NOT steal key focus / dismiss the system-modal Touch Bar
 
     NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     self.mirrorBar = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     self.mirrorBar.actionDelegate = self;
     self.mirrorBar.pomodoro = self.pomo;
+    self.mirrorBar.animateModeSwitch = YES;
     self.mirrorBar.caffeinated = (self.caffeine != nil);
     [self.mirrorBar setMode:self.barView.mode animated:NO];
     [container addSubview:self.mirrorBar];
@@ -288,8 +291,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
 - (void)barOpenSettings         { [self showSettings]; }
 - (void)barDidChangeMode:(NSInteger)mode {
-    [self.barView setMode:mode animated:YES];
-    if (self.mirrorBar) [self.mirrorBar setMode:mode animated:YES];   // keep both in sync
+    [self.barView setMode:mode animated:self.barView.animateModeSwitch];        // touch bar: instant
+    if (self.mirrorBar) [self.mirrorBar setMode:mode animated:self.mirrorBar.animateModeSwitch]; // mirror: animated
     [NSUserDefaults.standardUserDefaults setInteger:mode forKey:@"mode"];
 }
 

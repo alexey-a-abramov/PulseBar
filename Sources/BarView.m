@@ -94,6 +94,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     BOOL        _sliding;
     BOOL        _swiped;         // a swipe already fired this gesture
     CGFloat     _downX;          // for swipe detection
+    NSTimeInterval _lastTouchT;  // suppress mouse synthesized right after a Touch Bar touch
 }
 
 - (BOOL)isFlipped { return YES; }
@@ -106,6 +107,8 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
         _topProc = @""; _npTitle = @""; _npArtist = @"";
         _activeSlider = -1; _mode = BarModeSystem; _prevMode = BarModeSystem; _anim = 1.0;
         for (NSInteger i = 0; i < BarModeCount; i++) _tabW[i] = [self tabTarget:i];
+        _lastTouchT = -1; _animateModeSwitch = YES;
+        self.allowedTouchTypes = NSTouchTypeMaskDirect;   // receive physical Touch Bar touches
     }
     return self;
 }
@@ -454,19 +457,17 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     return (float)MAX(0, MIN(1, (p.x - x0) / w));
 }
 
-- (void)mouseDown:(NSEvent *)e {
-    NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+// Shared interaction core (used by both mouse and direct touch).
+- (void)beginAt:(NSPoint)p {
     _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO;
     Tile *t = [self tileAt:p];
     if (!t) return;
     CGFloat iconW = 20;
     if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
     else if (t->type == TVOL && p.x >= t->rect.origin.x + iconW) { _activeSlider = TVOL; _sliding = YES; [self.actionDelegate barSetVolume:[self sliderValueFor:t at:p]]; }
-    else { [self fireTap:t at:p]; }   // fire taps on PRESS — reliable on the Touch Bar
+    else { [self fireTap:t at:p]; }   // fire on press — reliable
 }
-
-- (void)mouseDragged:(NSEvent *)e {
-    NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+- (void)moveAt:(NSPoint)p {
     if (_sliding && _activeSlider >= 0) {
         for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
             float v = [self sliderValueFor:&_tiles[i] at:p];
@@ -478,16 +479,35 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     if (!_swiped && fabs(p.x - _downX) > 55) {   // horizontal swipe -> switch modes (wraps)
         _swiped = YES;
         NSInteger nm = (p.x - _downX) < 0 ? (_mode + 1) % BarModeCount : (_mode + BarModeCount - 1) % BarModeCount;
-        [self setMode:nm animated:YES]; [self.actionDelegate barDidChangeMode:nm];
+        [self setMode:nm animated:self.animateModeSwitch]; [self.actionDelegate barDidChangeMode:nm];
     }
 }
+- (void)endInteraction { _sliding = NO; _activeSlider = -1; }
 
-- (void)mouseUp:(NSEvent *)e { _sliding = NO; _activeSlider = -1; }
+// Mouse — used by the desktop Mirror window.
+- (void)mouseDown:(NSEvent *)e    { if (e.timestamp - _lastTouchT < 0.5) return; [self beginAt:[self convertPoint:e.locationInWindow fromView:nil]]; }
+- (void)mouseDragged:(NSEvent *)e { if (e.timestamp - _lastTouchT < 0.5) return; [self moveAt:[self convertPoint:e.locationInWindow fromView:nil]]; }
+- (void)mouseUp:(NSEvent *)e      { if (e.timestamp - _lastTouchT < 0.5) return; [self endInteraction]; }
+
+// Direct touches — how the PHYSICAL Touch Bar delivers input (it does NOT send
+// mouse events to a plain custom view). This is what makes the bar tappable.
+- (void)touchesBeganWithEvent:(NSEvent *)e {
+    _lastTouchT = e.timestamp;
+    NSTouch *t = [[e touchesMatchingPhase:NSTouchPhaseBegan inView:self] anyObject];
+    if (t) [self beginAt:[t locationInView:self]];
+}
+- (void)touchesMovedWithEvent:(NSEvent *)e {
+    _lastTouchT = e.timestamp;
+    NSTouch *t = [[e touchesMatchingPhase:NSTouchPhaseMoved inView:self] anyObject];
+    if (t) [self moveAt:[t locationInView:self]];
+}
+- (void)touchesEndedWithEvent:(NSEvent *)e     { _lastTouchT = e.timestamp; [self endInteraction]; }
+- (void)touchesCancelledWithEvent:(NSEvent *)e { _lastTouchT = e.timestamp; [self endInteraction]; }
 
 - (void)fireTap:(Tile *)t at:(NSPoint)p {
     id<BarActionDelegate> d = self.actionDelegate;
     switch (t->type) {
-        case TTAB:      [self setMode:t->arg animated:YES]; [d barDidChangeMode:t->arg]; break;
+        case TTAB:      [self setMode:t->arg animated:self.animateModeSwitch]; [d barDidChangeMode:t->arg]; break;
         case TCPU:      self.showCores = !self.showCores; [self setNeedsDisplay:YES]; break;
         case TSETTINGS: [d barOpenSettings]; break;
         case TPOMO:     [d barTogglePomodoro]; [self setNeedsDisplay:YES]; break;
