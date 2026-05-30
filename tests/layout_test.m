@@ -65,6 +65,20 @@ int main(void) { @autoreleasepool {
     NSArray *restored = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
     CHECK(eq(restored, full, "restored"), "removing the override restores Uptime");
 
+    // Reordering: an @"order" override moves the last System tile (Battery) to
+    // the front. Merge into any existing dict so other fields would survive.
+    NSString *battKey = systemKey(@"Battery");
+    NSMutableDictionary *battOv = [([ud dictionaryForKey:battKey] ?: @{}) mutableCopy];
+    battOv[@"order"] = @(-1);   // sorts ahead of every natural index (0..n-1)
+    [ud setObject:battOv forKey:battKey];
+    NSArray *reordered = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
+    CHECK([reordered.firstObject isEqualToString:@"Battery"] && reordered.count == full.count,
+          "order override moves Battery to the front at full width");
+    [ud removeObjectForKey:battKey];   // cleanup — keep the test idempotent
+
+    NSArray *reset = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
+    CHECK(eq(reset, full, "reset"), "removing the order override restores natural order");
+
     printf("\n%s — %d failure(s)\n", failures ? "FAILED" : "ALL TESTS PASSED", failures);
     return failures ? 1 : 0;
 }}

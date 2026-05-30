@@ -158,10 +158,29 @@ static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
             if ([o[@"hidden"] boolValue]) continue;                       // force-hidden → drop
             if (o[@"w"])    defs[i].weight = MAX(0.2, [o[@"w"] doubleValue]);
             if (o[@"prio"]) defs[i].prio   = [o[@"prio"] intValue];
+            if (o[@"minW"]) defs[i].minW   = MAX(24, MIN(200, [o[@"minW"] doubleValue]));
         }
         defs[out++] = defs[i];
     }
     *pn = out;
+}
+
+// A tile's natural left→right index in a mode (its position in tilesForMode),
+// or a large sentinel if it doesn't belong to the mode. Used as the default
+// display order when a tile has no explicit @"order" override.
+static int naturalIndexForType(NSInteger mode, TileType t) {
+    TileDef defs[16];
+    int n = tilesForMode(mode, defs);
+    for (int i = 0; i < n; i++) if (defs[i].type == t) return i;
+    return 1 << 20;
+}
+
+// A tile's effective display order: its persisted @"order" override if present,
+// else its natural index from tilesForMode. Lower sorts further left.
+static NSInteger effectiveOrder(NSInteger mode, TileType t) {
+    NSDictionary *o = [NSUserDefaults.standardUserDefaults dictionaryForKey:overrideKey(mode, t)];
+    if (o && o[@"order"]) return [o[@"order"] integerValue];
+    return naturalIndexForType(mode, t);
 }
 
 // Compute which tiles are visible for `mode` at content width `avail`, after
@@ -172,6 +191,17 @@ static int packVisible(NSInteger mode, CGFloat avail, TileDef *out) {
     int n = tilesForMode(mode, defs);
     applyTileOverrides(mode, defs, &n);
     if (n <= 0) return 0;
+
+    // Reorder by effective display order before any hiding, so the editor's
+    // ▲/▼ arrangement drives the on-screen left→right order. Stable insertion
+    // sort over the small array; ties keep the natural (pre-sort) order.
+    for (int i = 1; i < n; i++) {
+        TileDef key = defs[i];
+        NSInteger ko = effectiveOrder(mode, key.type);
+        int j = i - 1;
+        while (j >= 0 && effectiveOrder(mode, defs[j].type) > ko) { defs[j + 1] = defs[j]; j--; }
+        defs[j + 1] = key;
+    }
 
     // Hide the lowest-priority tiles until everyone left fits at their minW;
     // at least one tile always survives.
