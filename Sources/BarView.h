@@ -74,4 +74,7 @@ extern NSString * const PBLayoutChangedNotification;
 // The NSUserDefaults key for a tile's size/priority/visibility override. The
 // editor and the renderer MUST agree on this, so both go through here.
 + (NSString *)overrideKeyForMode:(NSInteger)mode type:(NSInteger)type;
+// Names of the tiles visible for `mode` at the given content width (after
+// overrides + priority hiding), left→right. The renderer uses the same packing.
++ (NSArray<NSString *> *)visibleTileNamesForMode:(NSInteger)mode contentWidth:(CGFloat)width;
 @end

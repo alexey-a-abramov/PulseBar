@@ -20,7 +20,21 @@ clang -fobjc-arc -O0 -isysroot "$SDK" \
   -framework Foundation -framework CoreFoundation -framework IOKit \
   -o "$BUILD/stats_test" || { echo "compile failed"; exit 1; }
 "$BUILD/stats_test"
-UNIT=$?
+STATS=$?
+
+echo
+echo "------------------------------------------------------------"
+echo " UNIT TESTS — layout engine (priority hiding + overrides)"
+echo "------------------------------------------------------------"
+clang -fobjc-arc -O0 -isysroot "$SDK" \
+  "$TESTS/layout_test.m" "$SRC/BarView.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" \
+  -framework AppKit -framework Foundation -framework CoreFoundation -framework IOKit \
+  -framework QuartzCore -framework CoreGraphics -framework CoreAudio -framework ApplicationServices \
+  -o "$BUILD/layout_test" || { echo "compile failed"; exit 1; }
+"$BUILD/layout_test"
+LAYOUT=$?
+
+UNIT=0; [ "$STATS" -eq 0 ] && [ "$LAYOUT" -eq 0 ] || UNIT=1
 
 echo
 echo "============================================================"

@@ -155,6 +155,30 @@ static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
     *pn = out;
 }
 
+// Compute which tiles are visible for `mode` at content width `avail`, after
+// overrides + priority-based hiding, compacted left→right into `out`. Returns
+// the visible count. Shared by the renderer and the layout unit test.
+static int packVisible(NSInteger mode, CGFloat avail, TileDef *out) {
+    TileDef defs[16];
+    int n = tilesForMode(mode, defs);
+    applyTileOverrides(mode, defs, &n);
+    if (n <= 0) return 0;
+
+    // Hide the lowest-priority tiles until everyone left fits at their minW;
+    // at least one tile always survives.
+    BOOL vis[16]; int nvis = n; CGFloat needed = 0;
+    for (int i = 0; i < n; i++) { vis[i] = YES; needed += defs[i].minW; }
+    while (needed > avail && nvis > 1) {
+        int worst = -1;
+        for (int i = 0; i < n; i++) if (vis[i] && (worst < 0 || defs[i].prio < defs[worst].prio)) worst = i;
+        if (worst < 0) break;
+        vis[worst] = NO; nvis--; needed -= defs[worst].minW;
+    }
+    int m = 0;
+    for (int i = 0; i < n; i++) if (vis[i]) out[m++] = defs[i];
+    return m;
+}
+
 // Lightweight, env-gated tracing (PULSEBAR_DEBUG=1) for diagnosing input.
 static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_DEBUG") ? 1 : 0; return v; }
 
@@ -491,38 +515,24 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 - (void)push:(TileType)type rect:(NSRect)r arg:(NSInteger)arg { if (_nTiles < 40) _tiles[_nTiles++] = (Tile){type, r, arg}; }
 
 - (void)modeContent:(NSInteger)mode in:(NSRect)area draw:(BOOL)draw record:(BOOL)record {
-    TileDef defs[16];
-    int n = tilesForMode(mode, defs);
-    applyTileOverrides(mode, defs, &n);   // size-editor overrides (weight/prio/force-hide)
-    if (n <= 0) return;
     CGFloat pad = 4, avail = area.size.width - pad * 2;
-
-    // Size-aware visibility: hide the lowest-priority tiles until everyone
-    // who's left fits at their minW. At least one tile always survives.
-    BOOL vis[16]; int nvis = n; CGFloat needed = 0;
-    for (int i = 0; i < n; i++) { vis[i] = YES; needed += defs[i].minW; }
-    while (needed > avail && nvis > 1) {
-        int worst = -1;
-        for (int i = 0; i < n; i++) if (vis[i] && (worst < 0 || defs[i].prio < defs[worst].prio)) worst = i;
-        if (worst < 0) break;
-        vis[worst] = NO; nvis--; needed -= defs[worst].minW;
-    }
+    TileDef vis[16];
+    int nvis = packVisible(mode, avail, vis);   // overrides + size-aware hiding
+    if (nvis <= 0) return;
 
     // Give each visible tile its minW, then split the leftover by weight so
     // small tiles aren't starved and big ones still take the lion's share.
     CGFloat sumMin = 0, sumW = 0;
-    for (int i = 0; i < n; i++) if (vis[i]) { sumMin += defs[i].minW; sumW += defs[i].weight; }
+    for (int i = 0; i < nvis; i++) { sumMin += vis[i].minW; sumW += vis[i].weight; }
     if (sumW <= 0) sumW = 1;
     CGFloat extra = MAX(0, avail - sumMin), x = area.origin.x + pad;
-    int drawn = 0;
-    for (int i = 0; i < n; i++) {
-        if (!vis[i]) continue;
-        CGFloat tw = defs[i].minW + extra * defs[i].weight / sumW;
+    for (int i = 0; i < nvis; i++) {
+        CGFloat tw = vis[i].minW + extra * vis[i].weight / sumW;
         NSRect r = NSMakeRect(x, 0, tw, area.size.height);
-        if (draw) [self drawTile:(Tile){defs[i].type, r, 0}];
-        if (record) [self push:defs[i].type rect:r arg:0];
-        x += tw; drawn++;
-        if (draw && drawn < nvis) [self divider:x];
+        if (draw) [self drawTile:(Tile){vis[i].type, r, 0}];
+        if (record) [self push:vis[i].type rect:r arg:0];
+        x += tw;
+        if (draw && i < nvis - 1) [self divider:x];
     }
 }
 
@@ -742,6 +752,14 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 
 + (NSString *)overrideKeyForMode:(NSInteger)mode type:(NSInteger)type {
     return overrideKey(mode, (TileType)type);
+}
+
++ (NSArray<NSString *> *)visibleTileNamesForMode:(NSInteger)mode contentWidth:(CGFloat)width {
+    TileDef vis[16];
+    int n = packVisible(mode, width, vis);
+    NSMutableArray *names = [NSMutableArray arrayWithCapacity:n];
+    for (int i = 0; i < n; i++) [names addObject:tileName(vis[i].type)];
+    return names;
 }
 
 + (NSArray<NSDictionary *> *)defaultLayoutForMode:(NSInteger)mode {
