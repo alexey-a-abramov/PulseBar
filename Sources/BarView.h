@@ -74,6 +74,11 @@ extern NSString * const PBLayoutChangedNotification;
 // The NSUserDefaults key for a tile's size/priority/visibility override. The
 // editor and the renderer MUST agree on this, so both go through here.
 + (NSString *)overrideKeyForMode:(NSInteger)mode type:(NSInteger)type;
+// Voice/agent tile control: show/hide or coarsely resize a tile (by stable token
+// or a friendly synonym) in `mode`. size is "big"/"small" (nil = unchanged).
+// Returns NO if the token names no tile. Caller posts PBLayoutChangedNotification.
++ (BOOL)setOverrideForMode:(NSInteger)mode tileToken:(NSString *)token
+                      show:(NSNumber *)show size:(NSString *)size;
 // Names of the tiles visible for `mode` at the given content width (after
 // overrides + priority hiding), left→right. The renderer uses the same packing.
 + (NSArray<NSString *> *)visibleTileNamesForMode:(NSInteger)mode contentWidth:(CGFloat)width;

@@ -5,10 +5,20 @@
 //
 #import <AppKit/AppKit.h>
 
-// System actions the coordinator can't do itself (they live in AppDelegate).
+// Actions the coordinator can't do itself (they live in AppDelegate / the bar).
 @protocol PBAgentHost <NSObject>
+// System / launching
 - (void)agentLaunch:(NSString *)path args:(NSArray<NSString *> *)args;
 - (void)agentRunShortcut:(NSString *)name;   // "lock" | "displaysleep" | "darkmode" | "missioncontrol"
+// PulseBar self-management (voice-drivable control of the bar itself)
+- (void)agentSetMode:(NSString *)mode;       // "system"|"media"|"productivity"|"classic"|"shortcuts"
+- (void)agentTogglePomodoro;
+- (void)agentToggleCaffeine;
+- (void)agentSetMirrorVisible:(BOOL)visible;
+- (void)agentOpenSettings;
+- (void)agentOpenLayoutEditor;
+// Show/hide or resize a tile in the current mode. show/size may be nil (= leave as-is).
+- (void)agentSetTile:(NSString *)token show:(NSNumber *)show size:(NSString *)size;
 @end
 
 @interface PBAgentCoordinator : NSObject

@@ -147,6 +147,18 @@ static NSString *modeToken(NSInteger m) {
 static NSString *overrideKey(NSInteger mode, TileType t) {
     return [NSString stringWithFormat:@"PBTile.%@.%@", modeToken(mode), tileToken(t)];
 }
+// Reverse of tileToken(), plus a few friendly synonyms for voice control.
+// Returns -1 if the token names no tile.
+static TileType tileTypeForToken(NSString *tok) {
+    NSString *t = tok.lowercaseString;
+    NSDictionary<NSString *, NSNumber *> *synonyms = @{
+        @"memory": @(TMEM), @"ram": @(TMEM), @"network": @(TNET), @"battery": @(TBATT),
+        @"volume": @(TVOL), @"brightness": @(TBRIGHT), @"pomodoro": @(TPOMO),
+    };
+    if (synonyms[t]) return (TileType)synonyms[t].intValue;
+    for (int i = 0; i <= TTAB; i++) if ([tileToken((TileType)i) isEqualToString:t]) return (TileType)i;
+    return (TileType)-1;
+}
 
 // Current version of the persisted per-tile override schema (the {hidden, w,
 // prio, order, minW} dicts under overrideKey()). Bump when the on-disk shape
@@ -801,6 +813,23 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 
 + (NSString *)overrideKeyForMode:(NSInteger)mode type:(NSInteger)type {
     return overrideKey(mode, (TileType)type);
+}
+
++ (BOOL)setOverrideForMode:(NSInteger)mode tileToken:(NSString *)token
+                      show:(NSNumber *)show size:(NSString *)size {
+    TileType t = tileTypeForToken(token);
+    if ((int)t < 0) return NO;
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSString *key = overrideKey(mode, t);
+    NSMutableDictionary *o = [([ud dictionaryForKey:key] ?: @{}) mutableCopy];
+    if (show) o[@"hidden"] = @(!show.boolValue);
+    if (size) {   // coarse voice sizing → relative weight
+        NSString *s = size.lowercaseString;
+        if ([s isEqualToString:@"big"] || [s isEqualToString:@"bigger"] || [s isEqualToString:@"large"]) o[@"w"] = @2.5;
+        else if ([s isEqualToString:@"small"] || [s isEqualToString:@"smaller"]) o[@"w"] = @0.6;
+    }
+    [ud setObject:o forKey:key];
+    return YES;
 }
 
 + (NSArray<NSString *> *)visibleTileNamesForMode:(NSInteger)mode contentWidth:(CGFloat)width {

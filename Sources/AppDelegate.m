@@ -247,6 +247,24 @@
 - (void)agentLaunch:(NSString *)path args:(NSArray<NSString *> *)args { [self launch:path args:args]; }
 - (void)agentRunShortcut:(NSString *)name { [self barRunShortcut:name]; }
 
+// PulseBar self-management driven by voice/agent.
+- (void)agentSetMode:(NSString *)mode {
+    NSDictionary *map = @{ @"system": @(BarModeSystem), @"media": @(BarModeMedia),
+                           @"productivity": @(BarModeProductivity), @"classic": @(BarModeClassic),
+                           @"shortcuts": @(BarModeShortcuts) };
+    NSNumber *m = map[mode.lowercaseString];
+    if (m) [self barDidChangeMode:m.integerValue];
+}
+- (void)agentTogglePomodoro { [self barTogglePomodoro]; }
+- (void)agentToggleCaffeine { [self barToggleCaffeine]; }
+- (void)agentSetMirrorVisible:(BOOL)visible { visible ? [self showMirror] : [self hideMirror]; }
+- (void)agentOpenSettings { [self showSettings]; }
+- (void)agentOpenLayoutEditor { [self showLayoutEditor]; }
+- (void)agentSetTile:(NSString *)token show:(NSNumber *)show size:(NSString *)size {
+    if ([BarView setOverrideForMode:self.barView.mode tileToken:token show:show size:size])
+        [[NSNotificationCenter defaultCenter] postNotificationName:PBLayoutChangedNotification object:nil];
+}
+
 - (void)barDidChangeMode:(NSInteger)mode {
     [self.barView setMode:mode animated:self.barView.animateModeSwitch];        // touch bar: instant
     if (self.mirror.bar) [self.mirror.bar setMode:mode animated:self.mirror.bar.animateModeSwitch]; // mirror: animated
