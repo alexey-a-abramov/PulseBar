@@ -57,6 +57,9 @@ DiskSpace StatsDiskSpace(void);                          // for "/"
 /// Name + CPU% of the busiest process (via `ps`). Safe to call ~every few sec.
 void StatsTopProcess(char *nameOut, int nameLen, double *cpuOut);
 
+/// Seconds since boot.
+double StatsUptimeSeconds(void);
+
 #ifdef __cplusplus
 }
 #endif

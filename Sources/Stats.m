@@ -309,7 +309,7 @@ void StatsTopProcess(char *nameOut, int nameLen, double *cpuOut) {
     char line[512];
     if (fgets(line, sizeof(line), p)) {
         double cpu = 0.0; char name[256] = {0};
-        if (sscanf(line, " %lf %255[^\n]", &cpu, name) >= 1) {
+        if (sscanf(line, " %lf %255[^\n]", &cpu, name) >= 1) {  // pcpu then comm
             if (cpuOut) *cpuOut = cpu;
             if (nameOut && nameLen) {
                 // basename only
@@ -321,4 +321,15 @@ void StatsTopProcess(char *nameOut, int nameLen, double *cpuOut) {
         }
     }
     pclose(p);
+}
+
+// ---------------------------------------------------------------------------
+// Uptime
+// ---------------------------------------------------------------------------
+double StatsUptimeSeconds(void) {
+    struct timeval bt; size_t sz = sizeof(bt);
+    if (sysctlbyname("kern.boottime", &bt, &sz, NULL, 0) != 0) return 0;
+    double now = (double)time(NULL);
+    double up = now - (double)bt.tv_sec;
+    return up < 0 ? 0 : up;
 }

@@ -190,6 +190,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
         net   = StatsNetwork();
         disk  = StatsDiskIO();
         space = StatsDiskSpace();
+        self.barView.uptime = StatsUptimeSeconds();
         if (self.showTopProc) { if (_tick % 3 == 0) StatsTopProcess(_topBuf, sizeof(_topBuf), &_topCPU); }
         else { _topBuf[0] = '\0'; _topCPU = 0; }
     } else { _topBuf[0] = '\0'; _topCPU = 0; }
@@ -238,6 +239,9 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     else if ([a isEqualToString:@"darkmode"])       [self launch:@"/usr/bin/osascript" args:@[@"-e", @"tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode"]];
     else if ([a isEqualToString:@"missioncontrol"]) [self launch:@"/usr/bin/open" args:@[@"-a", @"Mission Control"]];
     else if ([a isEqualToString:@"newnote"])        [self launch:@"/usr/bin/open" args:@[@"-a", @"Notes"]];
+    else if ([a isEqualToString:@"launchpad"])      [self launch:@"/usr/bin/open" args:@[@"-a", @"Launchpad"]];
+    else if ([a isEqualToString:@"activity"])       [self launch:@"/usr/bin/open" args:@[@"-a", @"Activity Monitor"]];
+    else if ([a isEqualToString:@"newreminder"])    [self launch:@"/usr/bin/open" args:@[@"-a", @"Reminders"]];
 }
 
 // fire-and-forget (don't block the main thread, unlike -run:args:)

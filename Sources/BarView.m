@@ -8,9 +8,10 @@
 #import "Pomodoro.h"
 
 typedef NS_ENUM(NSInteger, TileType) {
-    TCPU, TMEM, TGPU, TNET, TDISK,
-    TMEDIA, TVOL, TBRIGHT, TPOMO,
+    TCPU, TMEM, TGPU, TNET, TDISK, TUPTIME,
+    TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
     TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
+    TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND,
     TBATT, TCLOCK, TSETTINGS, TTAB
 };
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
@@ -23,6 +24,13 @@ static NSString *fmtRate(double bps) {
                     : [NSString stringWithFormat:@"%.1f%s", v, u[i]];
 }
 static double toGB(uint64_t b) { return (double)b / (1024.0 * 1024.0 * 1024.0); }
+static NSString *fmtClock(double sec) { int s = sec < 0 ? 0 : (int)sec; return [NSString stringWithFormat:@"%d:%02d", s / 60, s % 60]; }
+static NSString *fmtUptime(double sec) {
+    int s = (int)sec, d = s / 86400, h = (s % 86400) / 3600, m = (s % 3600) / 60;
+    if (d > 0) return [NSString stringWithFormat:@"%dd %dh", d, h];
+    if (h > 0) return [NSString stringWithFormat:@"%dh %dm", h, m];
+    return [NSString stringWithFormat:@"%dm", m];
+}
 
 static NSString *modeIcon(NSInteger m) {
     switch (m) {
@@ -48,11 +56,11 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     int n = 0;
     #define ADD(t, wt) do { out[n] = (t); w[n++] = (wt); } while (0)
     switch (m) {
-        case BarModeSystem:       ADD(TCPU,1.6); ADD(TMEM,1.05); ADD(TGPU,0.7); ADD(TNET,1.0); ADD(TDISK,1.0); break;
-        case BarModeMedia:        ADD(TMEDIA,2.4); ADD(TVOL,1.2); break;
-        case BarModeProductivity: ADD(TPOMO,1.5); ADD(TCAFFEINE,0.9); ADD(TSC_NOTE,0.9); ADD(TSC_LOCK,0.9); break;
-        case BarModeClassic:      ADD(TBRIGHT,1.3); ADD(TVOL,1.3); ADD(TMEDIA,1.8); break;
-        case BarModeShortcuts:    ADD(TSC_LOCK,1); ADD(TSC_SLEEP,1); ADD(TSC_SHOT,1); ADD(TSC_DARK,1); ADD(TSC_MISSION,1); ADD(TCAFFEINE,1); break;
+        case BarModeSystem:       ADD(TCPU,1.6); ADD(TMEM,1.05); ADD(TGPU,0.7); ADD(TNET,1.0); ADD(TDISK,1.0); ADD(TUPTIME,0.7); break;
+        case BarModeMedia:        ADD(TMEDIA,3.0); ADD(TVOL,1.2); break;
+        case BarModeProductivity: ADD(TPOMO,1.5); ADD(TCAFFEINE,0.85); ADD(TSC_NOTE,0.8); ADD(TSC_REMIND,0.8); ADD(TSC_LOCK,0.8); break;
+        case BarModeClassic:      ADD(TBRIGHT,1.3); ADD(TVOL,1.3); ADD(TMUTE,0.7); ADD(TMEDIA,1.8); break;
+        case BarModeShortcuts:    ADD(TSC_LOCK,1); ADD(TSC_SLEEP,1); ADD(TSC_SHOT,1); ADD(TSC_DARK,1); ADD(TSC_MISSION,1); ADD(TSC_LAUNCH,1); ADD(TSC_ACTIVITY,1); ADD(TCAFFEINE,1); break;
     }
     #undef ADD
     return n;
@@ -69,6 +77,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     BatteryInfo _battery;
     NSString   *_topProc, *_npTitle, *_npArtist;
     BOOL        _npPlaying, _npHasInfo;
+    double      _npElapsed, _npDuration;
     float       _vol, _bright;
     BOOL        _mute;
     double      _netMax, _diskMax;
@@ -112,6 +121,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     _npTitle = [NSString stringWithUTF8String:np.title] ?: @"";
     _npArtist = [NSString stringWithUTF8String:np.artist] ?: @"";
     _npPlaying = np.isPlaying; _npHasInfo = np.hasInfo;
+    _npElapsed = np.elapsed; _npDuration = np.duration;
     _vol = vol; _mute = mute; _bright = bright;
 
     [_cpuHist addObject:@(cpu)]; [_gpuHist addObject:@(gpu < 0 ? 0 : gpu)]; [_netHist addObject:@(net.downBps + net.upBps)];
@@ -286,9 +296,24 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
             [self symbol:@"forward.fill"                        in:NSMakeRect(x0 + 2 * (bs + gap), by, bs, bs) pt:11 color:[NSColor whiteColor]];
             CGFloat tx = x0 + 3 * (bs + gap) + 4, tw = NSMaxX(r) - tx - 4;
             if (tw > 24) {
-                if (_npHasInfo && _npTitle.length) { [self clip:_npTitle at:NSMakePoint(tx, 8) sz:9 w:NSFontWeightSemibold c:[NSColor whiteColor] maxW:tw];
-                    [self clip:_npArtist at:NSMakePoint(tx, 19) sz:7.5 w:NSFontWeightMedium c:[self dim] maxW:tw]; }
-                else [self t:@"— nothing playing —" at:NSMakePoint(tx, 12) sz:7.5 w:NSFontWeightMedium c:[self dim]];
+                if (_npHasInfo && _npTitle.length) {
+                    if (_npDuration > 1) {
+                        [self clip:_npTitle at:NSMakePoint(tx, 3) sz:9 w:NSFontWeightSemibold c:[NSColor whiteColor] maxW:tw];
+                        double frac = _npElapsed / _npDuration; if (frac < 0) frac = 0; if (frac > 1) frac = 1;
+                        [self t:fmtClock(_npElapsed) at:NSMakePoint(tx, 18) sz:7 w:NSFontWeightMedium c:[self dim]];
+                        [self t:fmtClock(_npDuration) rx:tx + tw y:18 sz:7 w:NSFontWeightMedium c:[self dim]];
+                        CGFloat bx = tx + 26, bw = tw - 52;
+                        if (bw > 8) {
+                            [[NSColor colorWithCalibratedWhite:1 alpha:0.14] setFill];
+                            [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, 20, bw, 2.5) xRadius:1.2 yRadius:1.2] fill];
+                            [[self accent] setFill];
+                            [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, 20, bw * frac, 2.5) xRadius:1.2 yRadius:1.2] fill];
+                        }
+                    } else {
+                        [self clip:_npTitle at:NSMakePoint(tx, 8) sz:9 w:NSFontWeightSemibold c:[NSColor whiteColor] maxW:tw];
+                        [self clip:_npArtist at:NSMakePoint(tx, 19) sz:7.5 w:NSFontWeightMedium c:[self dim] maxW:tw];
+                    }
+                } else [self t:@"— nothing playing —" at:NSMakePoint(tx, 12) sz:7.5 w:NSFontWeightMedium c:[self dim]];
             }
             break; }
         case TVOL: {
@@ -321,6 +346,14 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
         case TSC_DARK:    [self action:@"circle.lefthalf.filled" label:@"DARK" in:r active:NO color:[self accent]]; break;
         case TSC_MISSION: [self action:@"macwindow"            label:@"SPACES" in:r active:NO color:[self accent]]; break;
         case TSC_NOTE:    [self action:@"note.text"            label:@"NOTE"   in:r active:NO color:[self accent]]; break;
+        case TSC_LAUNCH:  [self action:@"square.grid.3x3.fill" label:@"APPS"   in:r active:NO color:[self accent]]; break;
+        case TSC_ACTIVITY:[self action:@"waveform.path.ecg"    label:@"MONITOR" in:r active:NO color:[self accent]]; break;
+        case TSC_REMIND:  [self action:@"checklist"            label:@"REMIND" in:r active:NO color:[self accent]]; break;
+        case TMUTE:       [self action:_mute ? @"speaker.slash.fill" : @"speaker.wave.2.fill" label:_mute ? @"MUTED" : @"MUTE" in:r active:_mute color:[self pink]]; break;
+        case TUPTIME: {
+            [self label:@"UPTIME" in:r];
+            [self t:fmtUptime(self.uptime) at:NSMakePoint(r.origin.x + 6, 14) sz:13 w:NSFontWeightBold c:[self accent]];
+            break; }
         case TBATT: {
             [self label:@"BATT" in:r];
             [self t:[NSString stringWithFormat:@"%.0f%%", _battery.percent] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self batt:_battery.percent chg:_battery.charging]];
@@ -466,6 +499,10 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
         case TSC_DARK:    [d barRunShortcut:@"darkmode"]; break;
         case TSC_MISSION: [d barRunShortcut:@"missioncontrol"]; break;
         case TSC_NOTE:    [d barRunShortcut:@"newnote"]; break;
+        case TSC_LAUNCH:  [d barRunShortcut:@"launchpad"]; break;
+        case TSC_ACTIVITY:[d barRunShortcut:@"activity"]; break;
+        case TSC_REMIND:  [d barRunShortcut:@"newreminder"]; break;
+        case TMUTE:       [d barToggleMute]; break;
         case TMEDIA: { CGFloat x0 = t->rect.origin.x + 4, bs = 22, gap = 2;
             if (p.x < x0 + bs) [d barMediaPrev]; else if (p.x < x0 + 2 * (bs + gap)) [d barMediaPlayPause]; else if (p.x < x0 + 3 * (bs + gap)) [d barMediaNext]; break; }
         case TVOL:    [d barToggleMute]; break;   // tap on the speaker icon = mute

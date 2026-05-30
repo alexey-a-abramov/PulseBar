@@ -99,7 +99,7 @@ typedef void    (*MRGetNPFn)(dispatch_queue_t, void (^)(CFDictionaryRef));
 typedef Boolean (*MRSendFn)(int, CFDictionaryRef);
 static MRGetNPFn   g_mrGet  = NULL;
 static MRSendFn    g_mrSend = NULL;
-static CFStringRef *g_kTitle = NULL, *g_kArtist = NULL, *g_kRate = NULL;
+static CFStringRef *g_kTitle = NULL, *g_kArtist = NULL, *g_kRate = NULL, *g_kElapsed = NULL, *g_kDuration = NULL;
 static NowPlaying  g_np;
 
 static void loadMR(void) {
@@ -108,9 +108,11 @@ static void loadMR(void) {
     if (mr) {
         g_mrGet  = (MRGetNPFn)dlsym(mr, "MRMediaRemoteGetNowPlayingInfo");
         g_mrSend = (MRSendFn)dlsym(mr, "MRMediaRemoteSendCommand");
-        g_kTitle  = (CFStringRef *)dlsym(mr, "kMRMediaRemoteNowPlayingInfoTitle");
-        g_kArtist = (CFStringRef *)dlsym(mr, "kMRMediaRemoteNowPlayingInfoArtist");
-        g_kRate   = (CFStringRef *)dlsym(mr, "kMRMediaRemoteNowPlayingInfoPlaybackRate");
+        g_kTitle    = (CFStringRef *)dlsym(mr, "kMRMediaRemoteNowPlayingInfoTitle");
+        g_kArtist   = (CFStringRef *)dlsym(mr, "kMRMediaRemoteNowPlayingInfoArtist");
+        g_kRate     = (CFStringRef *)dlsym(mr, "kMRMediaRemoteNowPlayingInfoPlaybackRate");
+        g_kElapsed  = (CFStringRef *)dlsym(mr, "kMRMediaRemoteNowPlayingInfoElapsedTime");
+        g_kDuration = (CFStringRef *)dlsym(mr, "kMRMediaRemoteNowPlayingInfoDuration");
     }
 }
 
@@ -129,6 +131,8 @@ void CtlMediaRefresh(void) {
             if (g_kRate)  { CFNumberRef r = CFDictionaryGetValue(info, *g_kRate);
                             double rate = 0; if (r) CFNumberGetValue(r, kCFNumberDoubleType, &rate);
                             np.isPlaying = rate > 0.01; }
+            if (g_kElapsed)  { CFNumberRef n = CFDictionaryGetValue(info, *g_kElapsed);  if (n) CFNumberGetValue(n, kCFNumberDoubleType, &np.elapsed); }
+            if (g_kDuration) { CFNumberRef n = CFDictionaryGetValue(info, *g_kDuration); if (n) CFNumberGetValue(n, kCFNumberDoubleType, &np.duration); }
         }
         g_np = np;
     });

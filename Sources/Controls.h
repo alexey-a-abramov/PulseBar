@@ -17,10 +17,12 @@ void  CtlSetBrightness(float v);
 
 // --- Now Playing / media transport -----------------------------------------
 typedef struct {
-    char title[256];
-    char artist[256];
-    int  isPlaying;
-    int  hasInfo;
+    char   title[256];
+    char   artist[256];
+    int    isPlaying;
+    int    hasInfo;
+    double elapsed;     // seconds
+    double duration;    // seconds (0 if unknown)
 } NowPlaying;
 
 void       CtlMediaInit(void);       // load the framework

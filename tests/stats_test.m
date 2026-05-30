@@ -82,6 +82,11 @@ int main(void) {
         printf("  top process = '%s' (%.1f%%)\n", proc, pcpu);
         CHECK(pcpu >= 0, "top-process cpu non-negative");
 
+        // Uptime
+        double up = StatsUptimeSeconds();
+        printf("  uptime = %.1f hours\n", up / 3600.0);
+        CHECK(up > 0, "uptime > 0");
+
         printf("\n%s — %d failure%s\n",
                failures ? "TESTS FAILED" : "ALL TESTS PASSED",
                failures, failures == 1 ? "" : "s");
