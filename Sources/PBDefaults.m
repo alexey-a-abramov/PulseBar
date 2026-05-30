@@ -12,3 +12,4 @@ NSString * const PBKeyBreak       = @"break";
 NSString * const PBKeyShowTopProc = @"showTopProc";
 NSString * const PBKeyMediaApp    = @"mediaApp";
 NSString * const PBKeyTBBackup    = @"tbBackup";
+NSString * const PBKeyLayoutSchemaVersion = @"layoutSchemaVersion";

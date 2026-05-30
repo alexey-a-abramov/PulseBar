@@ -14,3 +14,4 @@ extern NSString * const PBKeyBreak;        // NSInteger — Pomodoro break minut
 extern NSString * const PBKeyShowTopProc;  // BOOL  — sample/show the top CPU process
 extern NSString * const PBKeyMediaApp;     // NSString — play/pause target app (e.g. Spotify)
 extern NSString * const PBKeyTBBackup;     // NSString — saved Touch Bar PresentationModeGlobal
+extern NSString * const PBKeyLayoutSchemaVersion; // NSInteger — version of the persisted per-tile override schema

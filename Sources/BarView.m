@@ -6,6 +6,7 @@
 //
 #import "BarView.h"
 #import "Pomodoro.h"
+#import "PBDefaults.h"
 
 NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
 
@@ -147,9 +148,18 @@ static NSString *overrideKey(NSInteger mode, TileType t) {
     return [NSString stringWithFormat:@"PBTile.%@.%@", modeToken(mode), tileToken(t)];
 }
 
+// Current version of the persisted per-tile override schema (the {hidden, w,
+// prio, order, minW} dicts under overrideKey()). Bump when the on-disk shape
+// changes so a future +ensureLayoutSchema can migrate old dicts.
+static const NSInteger kLayoutSchemaVersion = 1;
+
 // Overlay persisted size-editor overrides on the built-in defaults, dropping
 // any tile the user force-hid. Compacts in place; updates *pn.
 static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
+    // Stamp the schema version once, on the first override read of the session.
+    static dispatch_once_t schemaOnce;
+    dispatch_once(&schemaOnce, ^{ [BarView ensureLayoutSchema]; });
+
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     int n = *pn, out = 0;
     for (int i = 0; i < n; i++) {
@@ -799,6 +809,15 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     NSMutableArray *names = [NSMutableArray arrayWithCapacity:n];
     for (int i = 0; i < n; i++) [names addObject:tileName(vis[i].type)];
     return names;
+}
+
++ (void)ensureLayoutSchema {
+    // Per-tile override dicts (see overrideKey()) are versioned so future shape
+    // changes can be migrated. First run with no version recorded: stamp the
+    // current one. (No migrations exist yet at v1, so this is behaviour-neutral.)
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    if ([ud objectForKey:PBKeyLayoutSchemaVersion] == nil)
+        [ud setInteger:kLayoutSchemaVersion forKey:PBKeyLayoutSchemaVersion];
 }
 
 + (NSArray<NSDictionary *> *)defaultLayoutForMode:(NSInteger)mode {

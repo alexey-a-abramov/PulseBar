@@ -77,4 +77,7 @@ extern NSString * const PBLayoutChangedNotification;
 // Names of the tiles visible for `mode` at the given content width (after
 // overrides + priority hiding), left→right. The renderer uses the same packing.
 + (NSArray<NSString *> *)visibleTileNamesForMode:(NSInteger)mode contentWidth:(CGFloat)width;
+// One-time: record the persisted-override schema version in NSUserDefaults if
+// absent, so future schema changes have a version to migrate from.
++ (void)ensureLayoutSchema;
 @end
