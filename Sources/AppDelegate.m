@@ -53,6 +53,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     id          _fnLocalMon;
     NSMenuItem *_fnItem;
     NSEventModifierFlags _prevFlags;
+    BOOL        _agentStartedThisPress;
 }
 
 #pragma mark - lifecycle
@@ -330,6 +331,17 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     if (!self.agent) { self.agent = [PBAgent new]; self.agent.runner = self; }
     if (!self.agentWindow) self.agentWindow = [[AgentWindowController alloc] initWithAgent:self.agent];
     [self.agentWindow present];
+}
+// Agent orb press → push-to-talk. Tap toggles; hold = walkie-talkie (release sends).
+- (void)barAgentDown {
+    if (!self.agent) { self.agent = [PBAgent new]; self.agent.runner = self; }
+    if (!self.agentWindow) self.agentWindow = [[AgentWindowController alloc] initWithAgent:self.agent];
+    if (self.agentWindow.listening) { _agentStartedThisPress = NO; [self.agentWindow stopAndSend]; }   // already listening → stop
+    else { _agentStartedThisPress = YES; [self.agentWindow presentAndListen]; }                          // idle → open + record
+}
+- (void)barAgentUp:(BOOL)wasHold {
+    if (_agentStartedThisPress && wasHold && self.agentWindow.listening) [self.agentWindow stopAndSend];  // walkie-talkie release
+    _agentStartedThisPress = NO;
 }
 
 // PBAgentRunner — turn the model's chosen action into a real Mac action.

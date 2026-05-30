@@ -188,6 +188,13 @@
     [self showWindow:nil]; [self.window makeKeyAndOrderFront:nil]; [self.window makeFirstResponder:_input];
 }
 
+- (BOOL)listening { return _listening; }
+- (void)presentAndListen { [self present]; [self startListening]; }
+- (void)stopAndSend {
+    [self stopListening];
+    if ([_input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].length) [self send:nil];
+}
+
 - (void)refreshStatus {
     [PBAgent status:_agent.model done:^(BOOL up, BOOL ready) {
         if (!up)         { self->_status.stringValue = @"⚠︎ Ollama not running"; self->_status.textColor = [NSColor systemOrangeColor]; }

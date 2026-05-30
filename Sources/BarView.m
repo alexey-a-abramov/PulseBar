@@ -98,6 +98,8 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     BOOL        _swiped;         // a swipe already fired this gesture
     CGFloat     _downX;          // for swipe detection
     NSTimeInterval _lastTouchT;  // suppress mouse synthesized right after a Touch Bar touch
+    BOOL        _agentPressing;  // agent orb press in progress
+    NSTimeInterval _pressDownT;  // when the orb press began (for hold detection)
 }
 
 - (BOOL)isFlipped { return YES; }
@@ -515,16 +517,21 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 
 // Shared interaction core (used by both mouse and direct touch).
 - (void)beginAt:(NSPoint)p {
-    _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO;
+    _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO; _agentPressing = NO;
     Tile *t = [self tileAt:p];
     if (pbDebug()) NSLog(@"[PB] beginAt (%.0f,%.0f) tile=%ld", p.x, p.y, t ? (long)t->type : -1);
     if (!t) return;
+    if (t->type == TAGENT) {   // agent orb -> push-to-talk (tap toggles, hold = walkie-talkie)
+        _agentPressing = YES; _pressDownT = NSProcessInfo.processInfo.systemUptime;
+        [self.actionDelegate barAgentDown]; return;
+    }
     CGFloat iconW = 20;
     if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
     else if (t->type == TVOL && p.x >= t->rect.origin.x + iconW) { _activeSlider = TVOL; _sliding = YES; [self.actionDelegate barSetVolume:[self sliderValueFor:t at:p]]; }
     else { [self fireTap:t at:p]; }   // fire on press — reliable
 }
 - (void)moveAt:(NSPoint)p {
+    if (_agentPressing) return;   // holding the orb (walkie-talkie) — ignore drags/swipes
     if (_sliding && _activeSlider >= 0) {
         for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
             float v = [self sliderValueFor:&_tiles[i] at:p];
@@ -539,7 +546,14 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         [self setMode:nm animated:self.animateModeSwitch]; [self.actionDelegate barDidChangeMode:nm];
     }
 }
-- (void)endInteraction { _sliding = NO; _activeSlider = -1; }
+- (void)endInteraction {
+    if (_agentPressing) {
+        _agentPressing = NO;
+        BOOL hold = (NSProcessInfo.processInfo.systemUptime - _pressDownT) >= 0.4;
+        [self.actionDelegate barAgentUp:hold];
+    }
+    _sliding = NO; _activeSlider = -1;
+}
 
 // Mouse — used by the desktop Mirror window.
 - (void)mouseDown:(NSEvent *)e    { if (e.timestamp - _lastTouchT < 0.5) return; if (pbDebug()) NSLog(@"[PB] mouseDown"); [self beginAt:[self convertPoint:e.locationInWindow fromView:nil]]; }

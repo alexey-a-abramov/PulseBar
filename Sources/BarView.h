@@ -30,6 +30,8 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barRunShortcut:(NSString *)action;
 - (void)barOpenSettings;
 - (void)barOpenAgent;
+- (void)barAgentDown;             // agent orb pressed — start/stop voice capture
+- (void)barAgentUp:(BOOL)wasHold; // released (wasHold = walkie-talkie)
 - (void)barDidChangeMode:(NSInteger)mode;
 - (void)barSendFunctionKey:(NSInteger)n;   // n = 1..12 (legacy)
 - (void)barAppAction:(NSString *)action;   // "hide" | "quit" the frontmost app
