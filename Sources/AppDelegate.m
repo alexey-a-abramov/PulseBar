@@ -15,10 +15,12 @@
 static NSTouchBarItemIdentifier const kBarItemID = @"com.fun.pulsebar.main";
 static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
-@interface AppDelegate () <BarActionDelegate, SettingsDelegate>
+@interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate>
 @property (nonatomic, strong) NSTouchBar           *fullBar;
 @property (nonatomic, strong) NSCustomTouchBarItem  *barItem;
 @property (nonatomic, strong) BarView              *barView;
+@property (nonatomic, strong) NSPanel              *mirrorPanel;
+@property (nonatomic, strong) BarView              *mirrorBar;
 @property (nonatomic, strong) NSCustomTouchBarItem  *stripItem;
 @property (nonatomic, strong) NSButton             *stripButton;
 @property (nonatomic, strong) NSStatusItem         *statusItem;
@@ -65,6 +67,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     if (getenv("PULSEBAR_SELFQUIT") == NULL) {          // never change system settings under test
         if (![ud objectForKey:@"fullBar"]) [ud setBool:YES forKey:@"fullBar"];  // full width by default
         if ([ud boolForKey:@"fullBar"]) [self applyFullBar:YES];                 // hide Control Strip
+        if (![ud objectForKey:@"mirror"]) [ud setBool:YES forKey:@"mirror"];     // show desktop mirror
+        if ([ud boolForKey:@"mirror"]) [self showMirror];
     }
 
     [self registerSleepWake];
@@ -150,6 +154,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [[menu addItemWithTitle:@"PulseBar — live system monitor" action:nil keyEquivalent:@""] setEnabled:NO];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Settings…"               action:@selector(showSettings)   keyEquivalent:@","];
+    [menu addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror) keyEquivalent:@"m"];
     [menu addItemWithTitle:@"Re-attach to Touch Bar"  action:@selector(attachToTouchBar) keyEquivalent:@"r"];
     [menu addItemWithTitle:@"Toggle CPU-core view"    action:@selector(toggleCores)     keyEquivalent:@"c"];
     [menu addItem:[NSMenuItem separatorItem]];
@@ -157,6 +162,42 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     for (NSMenuItem *it in menu.itemArray) if (it.action) it.target = self;
     self.statusItem.menu = menu;
 }
+
+#pragma mark - desktop mirror (companion window — exact, clickable copy of the bar)
+
+- (void)buildMirror {
+    CGFloat maxW = [NSScreen mainScreen].visibleFrame.size.width - 80;
+    CGFloat scale = MIN(1.5, maxW / 1085.0); if (scale < 0.9) scale = 0.9;
+    CGFloat w = 1085 * scale, h = 30 * scale;
+    NSPanel *p = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, w, h)
+        styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskNonactivatingPanel)
+        backing:NSBackingStoreBuffered defer:NO];
+    p.title = @"PulseBar — Touch Bar Mirror";
+    p.level = NSFloatingWindowLevel; p.hidesOnDeactivate = NO; p.releasedWhenClosed = NO;
+    p.movableByWindowBackground = YES; p.delegate = self;
+
+    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+    self.mirrorBar = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
+    self.mirrorBar.actionDelegate = self;
+    self.mirrorBar.pomodoro = self.pomo;
+    self.mirrorBar.caffeinated = (self.caffeine != nil);
+    [self.mirrorBar setMode:self.barView.mode animated:NO];
+    [container addSubview:self.mirrorBar];
+    self.mirrorBar.bounds = NSMakeRect(0, 0, 1085, 30);   // bounds < frame → scales the drawing up
+    p.contentView = container;
+    self.mirrorPanel = p;
+}
+
+- (void)showMirror {
+    if (!self.mirrorPanel) [self buildMirror];
+    NSRect sf = [NSScreen mainScreen].visibleFrame, wf = self.mirrorPanel.frame;
+    [self.mirrorPanel setFrameOrigin:NSMakePoint(sf.origin.x + (sf.size.width - wf.size.width) / 2, sf.origin.y + 36)];
+    [self.mirrorPanel orderFront:nil];
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"mirror"];
+}
+- (void)hideMirror { [self.mirrorPanel orderOut:nil]; [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"mirror"]; }
+- (void)toggleMirror { (self.mirrorPanel.isVisible) ? [self hideMirror] : [self showMirror]; }
+- (void)windowWillClose:(NSNotification *)n { if (n.object == self.mirrorPanel) [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"mirror"]; }
 
 #pragma mark - Touch Bar attach / detach
 
@@ -222,11 +263,18 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
     [self.pomo tick:1.0];
 
+    NSString *tp = [NSString stringWithUTF8String:_topBuf] ?: @"";
     [self.barView updateWithCPU:cpu cores:_cores count:n mem:mem net:net gpu:gpu
-                           disk:disk space:space battery:bat
-                        topProc:([NSString stringWithUTF8String:_topBuf] ?: @"") topCPU:_topCPU
+                           disk:disk space:space battery:bat topProc:tp topCPU:_topCPU
                      nowPlaying:np volume:vol mute:mute brightness:bright];
     self.stripButton.title = [NSString stringWithFormat:@"⟂ %.0f%%", cpu];
+
+    if (self.mirrorPanel.isVisible) {   // keep the desktop mirror in lock-step
+        self.mirrorBar.uptime = self.barView.uptime;
+        [self.mirrorBar updateWithCPU:cpu cores:_cores count:n mem:mem net:net gpu:gpu
+                                 disk:disk space:space battery:bat topProc:tp topCPU:_topCPU
+                           nowPlaying:np volume:vol mute:mute brightness:bright];
+    }
 }
 
 #pragma mark - BarActionDelegate
@@ -239,7 +287,11 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)barMediaPrev            { CtlMediaPrev(); }
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
 - (void)barOpenSettings         { [self showSettings]; }
-- (void)barDidChangeMode:(NSInteger)mode { [NSUserDefaults.standardUserDefaults setInteger:mode forKey:@"mode"]; }
+- (void)barDidChangeMode:(NSInteger)mode {
+    [self.barView setMode:mode animated:YES];
+    if (self.mirrorBar) [self.mirrorBar setMode:mode animated:YES];   // keep both in sync
+    [NSUserDefaults.standardUserDefaults setInteger:mode forKey:@"mode"];
+}
 
 - (void)barToggleCaffeine {
     if (self.caffeine) { [self.caffeine terminate]; self.caffeine = nil; }
@@ -249,7 +301,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
         self.caffeine = t;
     }
     self.barView.caffeinated = (self.caffeine != nil);
-    [self.barView setNeedsDisplay:YES];
+    self.mirrorBar.caffeinated = (self.caffeine != nil);
+    [self.barView setNeedsDisplay:YES]; [self.mirrorBar setNeedsDisplay:YES];
 }
 
 - (void)barRunShortcut:(NSString *)a {
