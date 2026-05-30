@@ -83,6 +83,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     int         _nTiles;
     TileType    _activeSlider;
     BOOL        _sliding;
+    CGFloat     _downX;          // for swipe detection
 }
 
 - (BOOL)isFlipped { return YES; }
@@ -126,7 +127,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
 
 #pragma mark - mode switching (accordion)
 
-- (CGFloat)tabTarget:(NSInteger)m { return (m == _mode) ? 78 : 26; }
+- (CGFloat)tabTarget:(NSInteger)m { return (m == _mode) ? 86 : 30; }
 
 - (void)setMode:(NSInteger)mode animated:(BOOL)animated {
     if (mode < 0 || mode >= BarModeCount || mode == _mode) return;
@@ -360,10 +361,17 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
 }
 
 - (void)drawTab:(NSInteger)m rect:(NSRect)r active:(BOOL)active {
-    if (active) { [[[self accent] colorWithAlphaComponent:0.18] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 1, 4) xRadius:5 yRadius:5] fill]; }
-    NSColor *c = active ? [self accent] : [NSColor colorWithCalibratedWhite:0.70 alpha:1];
-    [self symbol:modeIcon(m) in:NSMakeRect(r.origin.x + 3, 0, 18, r.size.height) pt:12 color:c];
-    if (r.size.width > 32) [self t:modeLabel(m) at:NSMakePoint(r.origin.x + 23, r.size.height / 2 - 4) sz:8 w:NSFontWeightBold c:c];
+    NSRect pill = NSInsetRect(r, 1, 3);
+    if (active) {
+        [[self accent] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6] fill];
+        [self symbol:modeIcon(m) in:NSMakeRect(r.origin.x + 5, 0, 16, r.size.height) pt:12 color:[NSColor blackColor]];
+        if (r.size.width > 34) [self t:modeLabel(m) at:NSMakePoint(r.origin.x + 23, r.size.height / 2 - 5) sz:8.5 w:NSFontWeightHeavy c:[NSColor blackColor]];
+    } else {
+        [[NSColor colorWithCalibratedWhite:1 alpha:0.07] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6] fill];
+        [self symbol:modeIcon(m) in:NSMakeRect(r.origin.x + 3, 0, r.size.width - 6, r.size.height) pt:12 color:[NSColor colorWithCalibratedWhite:0.78 alpha:1]];
+    }
 }
 
 - (void)drawRect:(NSRect)dirty {
@@ -414,8 +422,37 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
 
 - (void)mouseDown:(NSEvent *)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
-    Tile *t = [self tileAt:p]; _activeSlider = -1; _sliding = NO;
+    _downX = p.x; _activeSlider = -1; _sliding = NO;
+    Tile *t = [self tileAt:p];
     if (!t) return;
+    CGFloat iconW = 20;   // begin slider drags on press for responsiveness
+    if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
+    else if (t->type == TVOL && p.x >= t->rect.origin.x + iconW) { _activeSlider = TVOL; _sliding = YES; [self.actionDelegate barSetVolume:[self sliderValueFor:t at:p]]; }
+}
+
+- (void)mouseDragged:(NSEvent *)e {
+    if (!_sliding || _activeSlider < 0) return;
+    NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
+        float v = [self sliderValueFor:&_tiles[i] at:p];
+        if (_activeSlider == TVOL) [self.actionDelegate barSetVolume:v]; else [self.actionDelegate barSetBrightness:v];
+        break;
+    }
+}
+
+- (void)mouseUp:(NSEvent *)e {
+    NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    if (_sliding) { _sliding = NO; _activeSlider = -1; return; }
+    CGFloat dx = p.x - _downX;
+    if (fabs(dx) > 45) {   // horizontal swipe -> switch modes (wraps)
+        NSInteger nm = dx < 0 ? (_mode + 1) % BarModeCount : (_mode + BarModeCount - 1) % BarModeCount;
+        [self setMode:nm animated:YES]; [self.actionDelegate barDidChangeMode:nm];
+        return;
+    }
+    Tile *t = [self tileAt:p]; if (t) [self fireTap:t at:p];   // it was a tap
+}
+
+- (void)fireTap:(Tile *)t at:(NSPoint)p {
     id<BarActionDelegate> d = self.actionDelegate;
     switch (t->type) {
         case TTAB:      [self setMode:t->arg animated:YES]; [d barDidChangeMode:t->arg]; break;
@@ -431,23 +468,9 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
         case TSC_NOTE:    [d barRunShortcut:@"newnote"]; break;
         case TMEDIA: { CGFloat x0 = t->rect.origin.x + 4, bs = 22, gap = 2;
             if (p.x < x0 + bs) [d barMediaPrev]; else if (p.x < x0 + 2 * (bs + gap)) [d barMediaPlayPause]; else if (p.x < x0 + 3 * (bs + gap)) [d barMediaNext]; break; }
-        case TVOL: { CGFloat iconW = 20;
-            if (p.x < t->rect.origin.x + iconW) [d barToggleMute];
-            else { _activeSlider = TVOL; _sliding = YES; [d barSetVolume:[self sliderValueFor:t at:p]]; } break; }
-        case TBRIGHT: { _activeSlider = TBRIGHT; _sliding = YES; [d barSetBrightness:[self sliderValueFor:t at:p]]; break; }
+        case TVOL:    [d barToggleMute]; break;   // tap on the speaker icon = mute
         default: break;
     }
 }
-
-- (void)mouseDragged:(NSEvent *)e {
-    if (!_sliding || _activeSlider < 0) return;
-    NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
-    for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
-        float v = [self sliderValueFor:&_tiles[i] at:p];
-        if (_activeSlider == TVOL) [self.actionDelegate barSetVolume:v]; else [self.actionDelegate barSetBrightness:v];
-        break;
-    }
-}
-- (void)mouseUp:(NSEvent *)e { _sliding = NO; _activeSlider = -1; }
 
 @end

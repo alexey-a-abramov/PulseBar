@@ -61,7 +61,10 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [self buildStatusItem];
     [self attachToTouchBar];
 
-    if ([ud boolForKey:@"fullBar"]) [self applyFullBar:YES];   // re-apply saved takeover
+    if (getenv("PULSEBAR_SELFQUIT") == NULL) {          // never change system settings under test
+        if (![ud objectForKey:@"fullBar"]) [ud setBool:YES forKey:@"fullBar"];  // full width by default
+        if ([ud boolForKey:@"fullBar"]) [self applyFullBar:YES];                 // hide Control Strip
+    }
 
     [self tick];
     self.timer = [NSTimer timerWithTimeInterval:1.0 target:self selector:@selector(tick) userInfo:nil repeats:YES];
