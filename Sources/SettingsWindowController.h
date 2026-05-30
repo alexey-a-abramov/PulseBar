@@ -14,6 +14,8 @@
 - (void)settingsSetWork:(NSInteger)w breakMin:(NSInteger)b;
 - (BOOL)settingsTopProcEnabled;
 - (void)settingsSetTopProc:(BOOL)on;
+- (NSString *)settingsMediaApp;
+- (void)settingsSetMediaApp:(NSString *)app;
 - (void)settingsQuit;
 @end
 

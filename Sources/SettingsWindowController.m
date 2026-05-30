@@ -3,15 +3,18 @@
 //
 #import "SettingsWindowController.h"
 
+@interface SettingsWindowController () <NSTextFieldDelegate>
+@end
+
 @implementation SettingsWindowController {
     __weak id<SettingsDelegate> _delegate;
     NSButton   *_fullBar, *_login, *_topProc;
     NSStepper  *_workStep, *_breakStep;
-    NSTextField *_workVal, *_breakVal;
+    NSTextField *_workVal, *_breakVal, *_mediaField;
 }
 
 - (instancetype)initWithDelegate:(id<SettingsDelegate>)delegate {
-    NSWindow *w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 380, 300)
+    NSWindow *w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 380, 352)
                                               styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                                                 backing:NSBackingStoreBuffered defer:NO];
     w.title = @"PulseBar Settings";
@@ -31,7 +34,7 @@ static NSTextField *label(NSString *s, NSRect f, CGFloat sz, BOOL bold) {
 
 - (void)build {
     NSView *c = self.window.contentView;
-    CGFloat W = 380, top = 300;
+    CGFloat W = 380, top = 352;
 
     [c addSubview:label(@"⟂ PulseBar", NSMakeRect(20, top - 40, W - 40, 24), 17, YES)];
     NSTextField *sub = label(@"Live system monitor on the Touch Bar", NSMakeRect(20, top - 60, W - 40, 18), 11, NO);
@@ -74,6 +77,13 @@ static NSTextField *label(NSString *s, NSRect f, CGFloat sz, BOOL bold) {
     _breakVal = label(@"5 min", NSMakeRect(135, top - 248, 80, 18), 11, NO);
     [c addSubview:_breakVal];
 
+    [c addSubview:label(@"Media app", NSMakeRect(20, top - 288, 80, 18), 12, YES)];
+    _mediaField = [[NSTextField alloc] initWithFrame:NSMakeRect(110, top - 290, 150, 22)];
+    _mediaField.placeholderString = @"Spotify"; _mediaField.delegate = self;
+    [c addSubview:_mediaField];
+    NSTextField *mh = label(@"play/pause target for the bar (e.g. Spotify, Music)", NSMakeRect(20, top - 310, W - 40, 14), 9, NO);
+    mh.textColor = [NSColor secondaryLabelColor]; [c addSubview:mh];
+
     NSButton *quit = [NSButton buttonWithTitle:@"Quit PulseBar" target:self action:@selector(doQuit:)];
     quit.frame = NSMakeRect(W - 140, 18, 120, 30);
     quit.bezelStyle = NSBezelStyleRounded;
@@ -96,6 +106,11 @@ static NSTextField *label(NSString *s, NSRect f, CGFloat sz, BOOL bold) {
     _workStep.integerValue = wm; _breakStep.integerValue = bm;
     _workVal.stringValue = [NSString stringWithFormat:@"%ld min", (long)wm];
     _breakVal.stringValue = [NSString stringWithFormat:@"%ld min", (long)bm];
+    _mediaField.stringValue = [_delegate settingsMediaApp] ?: @"";
+}
+
+- (void)controlTextDidEndEditing:(NSNotification *)n {
+    if (n.object == _mediaField) [_delegate settingsSetMediaApp:_mediaField.stringValue];
 }
 
 - (void)toggleFullBar:(NSButton *)b { [_delegate settingsSetFullBar:(b.state == NSControlStateValueOn)]; }

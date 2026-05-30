@@ -445,6 +445,13 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     self.showTopProc = on;
     [NSUserDefaults.standardUserDefaults setBool:on forKey:@"showTopProc"];
 }
+- (NSString *)settingsMediaApp { NSString *a = [NSUserDefaults.standardUserDefaults stringForKey:@"mediaApp"]; return a.length ? a : @"Spotify"; }
+- (void)settingsSetMediaApp:(NSString *)app {
+    NSString *a = [app stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (!a.length) a = @"Spotify";
+    CtlSetMediaApp(a);
+    [NSUserDefaults.standardUserDefaults setObject:a forKey:@"mediaApp"];
+}
 - (void)settingsQuit { [self quit]; }
 
 #pragma mark - full-bar takeover (reversible)
