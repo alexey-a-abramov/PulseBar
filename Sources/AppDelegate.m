@@ -42,6 +42,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     double      _topCPU;
     NSInteger   _tick;
     BOOL        _spiOK;
+    BOOL        _terminating;
 }
 
 #pragma mark - lifecycle
@@ -79,7 +80,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     NSLog(@"[PulseBar] launched (spi=%@)", _spiOK ? @"available" : @"UNAVAILABLE");
 }
 
-- (void)applicationWillTerminate:(NSNotification *)note { [self detach]; }
+- (void)applicationWillTerminate:(NSNotification *)note { _terminating = YES; [self detach]; }
 
 // Pause all sampling while the screen / system is asleep (the bar isn't exposed),
 // so PulseBar uses zero CPU when you can't see it.
@@ -200,7 +201,10 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 }
 - (void)hideMirror { [self.mirrorPanel orderOut:nil]; [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"mirror"]; }
 - (void)toggleMirror { (self.mirrorPanel.isVisible) ? [self hideMirror] : [self showMirror]; }
-- (void)windowWillClose:(NSNotification *)n { if (n.object == self.mirrorPanel) [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"mirror"]; }
+- (void)windowWillClose:(NSNotification *)n {
+    if (_terminating) return;   // don't persist "hidden" just because the app is quitting
+    if (n.object == self.mirrorPanel) [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"mirror"];
+}
 
 #pragma mark - Touch Bar attach / detach
 
@@ -338,7 +342,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
     [self.settings present];
 }
-- (void)quit { [self detach]; [NSApp terminate:nil]; }
+- (void)quit { _terminating = YES; [self detach]; [NSApp terminate:nil]; }
 
 #pragma mark - SettingsDelegate
 
