@@ -28,6 +28,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 @property (nonatomic, strong) SettingsWindowController *settings;
 @property (nonatomic, strong) NSTask               *caffeine;
 @property (nonatomic) BOOL                          showTopProc;
+@property (nonatomic, strong) NSLayoutConstraint   *barWidth;
 @end
 
 @implementation AppDelegate {
@@ -96,10 +97,13 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 #pragma mark - bars
 
 - (void)buildBars {
-    self.barView = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, 1004, 30)];
+    // Full Touch Bar is ~1085pt; the app region with Control Strip shown is ~1004pt.
+    BOOL full = [NSUserDefaults.standardUserDefaults boolForKey:@"fullBar"];
+    self.barView = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, full ? 1085 : 1004, 30)];
     self.barView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.barView.widthAnchor  constraintEqualToConstant:1004].active = YES;
-    [self.barView.heightAnchor constraintEqualToConstant:30].active   = YES;
+    self.barWidth = [self.barView.widthAnchor constraintEqualToConstant:(full ? 1085 : 1004)];
+    self.barWidth.active = YES;
+    [self.barView.heightAnchor constraintEqualToConstant:30].active = YES;
     self.barView.actionDelegate = self;
     self.barView.pomodoro = self.pomo;
 
@@ -309,6 +313,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
         [self writeTBMode:([ud stringForKey:@"tbBackup"] ?: @"appWithControlStrip")];
     }
     [ud setBool:on forKey:@"fullBar"];
+    self.barWidth.constant = on ? 1085 : 1004;   // fill the freed Control-Strip space
     [self restartTB];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.3 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ [self attachToTouchBar]; });
