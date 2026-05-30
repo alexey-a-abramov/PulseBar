@@ -66,6 +66,9 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     return n;
 }
 
+// Lightweight, env-gated tracing (PULSEBAR_DEBUG=1) for diagnosing input.
+static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_DEBUG") ? 1 : 0; return v; }
+
 @implementation BarView {
     double      _cpu, _gpu, _topCPU;
     double      _cores[128];
@@ -461,6 +464,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
 - (void)beginAt:(NSPoint)p {
     _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO;
     Tile *t = [self tileAt:p];
+    if (pbDebug()) NSLog(@"[PB] beginAt (%.0f,%.0f) tile=%ld", p.x, p.y, t ? (long)t->type : -1);
     if (!t) return;
     CGFloat iconW = 20;
     if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
@@ -485,7 +489,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
 - (void)endInteraction { _sliding = NO; _activeSlider = -1; }
 
 // Mouse — used by the desktop Mirror window.
-- (void)mouseDown:(NSEvent *)e    { if (e.timestamp - _lastTouchT < 0.5) return; [self beginAt:[self convertPoint:e.locationInWindow fromView:nil]]; }
+- (void)mouseDown:(NSEvent *)e    { if (e.timestamp - _lastTouchT < 0.5) return; if (pbDebug()) NSLog(@"[PB] mouseDown"); [self beginAt:[self convertPoint:e.locationInWindow fromView:nil]]; }
 - (void)mouseDragged:(NSEvent *)e { if (e.timestamp - _lastTouchT < 0.5) return; [self moveAt:[self convertPoint:e.locationInWindow fromView:nil]]; }
 - (void)mouseUp:(NSEvent *)e      { if (e.timestamp - _lastTouchT < 0.5) return; [self endInteraction]; }
 
@@ -494,6 +498,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
 - (void)touchesBeganWithEvent:(NSEvent *)e {
     _lastTouchT = e.timestamp;
     NSTouch *t = [[e touchesMatchingPhase:NSTouchPhaseBegan inView:self] anyObject];
+    if (pbDebug()) NSLog(@"[PB] touchesBegan touch=%@", t ? @"YES" : @"nil");
     if (t) [self beginAt:[t locationInView:self]];
 }
 - (void)touchesMovedWithEvent:(NSEvent *)e {
@@ -505,6 +510,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
 - (void)touchesCancelledWithEvent:(NSEvent *)e { _lastTouchT = e.timestamp; [self endInteraction]; }
 
 - (void)fireTap:(Tile *)t at:(NSPoint)p {
+    if (pbDebug()) NSLog(@"[PB] fireTap tile=%ld", (long)t->type);
     id<BarActionDelegate> d = self.actionDelegate;
     switch (t->type) {
         case TTAB:      [self setMode:t->arg animated:self.animateModeSwitch]; [d barDidChangeMode:t->arg]; break;
@@ -523,7 +529,11 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
         case TSC_REMIND:  [d barRunShortcut:@"newreminder"]; break;
         case TMUTE:       [d barToggleMute]; break;
         case TMEDIA: { CGFloat x0 = t->rect.origin.x + 4, bs = 22, gap = 2;
-            if (p.x < x0 + bs) [d barMediaPrev]; else if (p.x < x0 + 2 * (bs + gap)) [d barMediaPlayPause]; else if (p.x < x0 + 3 * (bs + gap)) [d barMediaNext]; break; }
+            if (p.x < x0 + bs) [d barMediaPrev];
+            else if (p.x < x0 + 2 * (bs + gap)) [d barMediaPlayPause];
+            else if (p.x < x0 + 3 * (bs + gap)) [d barMediaNext];
+            else [d barMediaPlayPause];   // tapping the track area also toggles play
+            break; }
         case TVOL:    [d barToggleMute]; break;   // tap on the speaker icon = mute
         default: break;
     }

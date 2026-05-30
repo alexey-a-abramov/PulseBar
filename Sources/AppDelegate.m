@@ -9,6 +9,7 @@
 #import "Controls.h"
 #import "Pomodoro.h"
 #import "SettingsWindowController.h"
+#import "Log.h"
 #import <dlfcn.h>
 #import <signal.h>
 
@@ -48,6 +49,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 #pragma mark - lifecycle
 
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
+    PBLogInit();
     [self installSignalHandlers];
     [self loadDFR];
     CtlMediaInit();
@@ -77,7 +79,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
     const char *sq = getenv("PULSEBAR_SELFQUIT");
     if (sq) { double s = atof(sq); if (s > 0) [self performSelector:@selector(quit) withObject:nil afterDelay:s]; }
-    NSLog(@"[PulseBar] launched (spi=%@)", _spiOK ? @"available" : @"UNAVAILABLE");
+    PBLog(@"launched (spi=%@)", _spiOK ? @"available" : @"UNAVAILABLE");
 }
 
 - (void)applicationWillTerminate:(NSNotification *)note { _terminating = YES; [self detach]; }
@@ -159,6 +161,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [menu addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror) keyEquivalent:@"m"];
     [menu addItemWithTitle:@"Re-attach to Touch Bar"  action:@selector(attachToTouchBar) keyEquivalent:@"r"];
     [menu addItemWithTitle:@"Toggle CPU-core view"    action:@selector(toggleCores)     keyEquivalent:@"c"];
+    [menu addItemWithTitle:@"Open Log"                action:@selector(openLog)         keyEquivalent:@"l"];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Quit PulseBar" action:@selector(quit) keyEquivalent:@"q"];
     for (NSMenuItem *it in menu.itemArray) if (it.action) it.target = self;
@@ -216,12 +219,12 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
     if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:systemTrayItemIdentifier:)]) {
         [NSTouchBar presentSystemModalTouchBar:self.fullBar systemTrayItemIdentifier:kStripID];
-        _spiOK = YES; NSLog(@"[PulseBar] presented full Touch Bar (2-arg SPI)");
+        _spiOK = YES; PBLog(@"presented full Touch Bar (2-arg SPI)");
     } else if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:placement:systemTrayItemIdentifier:)]) {
         [NSTouchBar presentSystemModalTouchBar:self.fullBar placement:1 systemTrayItemIdentifier:kStripID];
-        _spiOK = YES; NSLog(@"[PulseBar] presented full Touch Bar (placement SPI)");
+        _spiOK = YES; PBLog(@"presented full Touch Bar (placement SPI)");
     } else {
-        _spiOK = NO; NSLog(@"[PulseBar] Touch Bar SPI unavailable");
+        _spiOK = NO; PBLog(@"Touch Bar SPI unavailable");
     }
 }
 
@@ -289,9 +292,18 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)barSetVolume:(float)v   { if (CtlGetMute()) CtlSetMute(NO); CtlSetVolume(v); }
 - (void)barToggleMute           { CtlSetMute(!CtlGetMute()); }
 - (void)barSetBrightness:(float)v { CtlSetBrightness(v); }
-- (void)barMediaPlayPause       { CtlMediaPlayPause(); }
-- (void)barMediaNext            { CtlMediaNext(); }
-- (void)barMediaPrev            { CtlMediaPrev(); }
+- (void)barMediaPlayPause {
+    NowPlaying np = CtlNowPlaying();
+    PBLog(@"media play/pause (nowPlaying=%s title='%s')", np.hasInfo ? "yes" : "NO", np.title);
+    if (np.hasInfo) { CtlMediaPlayPause(); return; }
+    // Nothing is playing: launch Spotify and start it.
+    [self launch:@"/usr/bin/open" args:@[@"-a", @"Spotify"]];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self launch:@"/usr/bin/osascript" args:@[@"-e", @"tell application \"Spotify\" to play"]];
+    });
+}
+- (void)barMediaNext            { PBLog(@"action media next"); CtlMediaNext(); }
+- (void)barMediaPrev            { PBLog(@"action media prev"); CtlMediaPrev(); }
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
 - (void)barOpenSettings         { [self showSettings]; }
 - (void)barDidChangeMode:(NSInteger)mode {
@@ -338,6 +350,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 #pragma mark - menu actions
 
 - (void)toggleCores  { self.barView.showCores = !self.barView.showCores; [self.barView setNeedsDisplay:YES]; }
+- (void)openLog { [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:PBLogFile()]]; }
 - (void)showSettings {
     if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
     [self.settings present];

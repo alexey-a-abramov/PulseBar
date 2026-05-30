@@ -42,7 +42,7 @@ echo "==> SDK: $SDK"
 
 clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
   -Wall -Wno-deprecated-declarations \
-  "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" "$SRC/BarView.m" \
+  "$SRC/Log.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" "$SRC/BarView.m" \
   "$SRC/SettingsWindowController.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
   -framework AppKit -framework Foundation -framework CoreFoundation \
   -framework IOKit -framework QuartzCore -framework CoreGraphics -framework CoreAudio \
