@@ -168,9 +168,19 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
 - (void)buildStatusItem {
     self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
-    NSImage *icon = [NSImage imageWithSystemSymbolName:@"waveform.path.ecg" accessibilityDescription:@"PulseBar"];
-    if (icon) { icon.template = YES; self.statusItem.button.image = icon; }
-    else self.statusItem.button.title = @"⟂";
+    // Branded "pulse bars" mark (audio-level look), drawn as a template image.
+    NSImage *icon = [NSImage imageWithSize:NSMakeSize(20, 16) flipped:NO drawingHandler:^BOOL(NSRect r) {
+        [[NSColor blackColor] set];
+        CGFloat heights[6] = { 5, 9, 14, 16, 8, 4 }, bw = 2.0, gap = 1.4, x = 1.5;
+        for (int i = 0; i < 6; i++) {
+            CGFloat h = heights[i];
+            [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x, (16 - h) / 2, bw, h) xRadius:1 yRadius:1] fill];
+            x += bw + gap;
+        }
+        return YES;
+    }];
+    icon.template = YES;
+    self.statusItem.button.image = icon;
     NSMenu *menu = [[NSMenu alloc] init];
     [[menu addItemWithTitle:@"PulseBar — live system monitor" action:nil keyEquivalent:@""] setEnabled:NO];
     [menu addItem:[NSMenuItem separatorItem]];
