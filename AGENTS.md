@@ -38,7 +38,7 @@ SwiftPM — just `clang` over `Sources/*.m`.
   Build & run it, then look at the PNG:
   ```bash
   clang -fobjc-arc -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
-    tests/render_test.m Sources/BarView.m Sources/Pomodoro.m \
+    tests/render_test.m Sources/BarView.m Sources/Pomodoro.m Sources/PreviewData.m \
     -framework AppKit -framework Foundation -o build/render_test && ./build/render_test
   ```
 - The **Desktop Mirror** (a floating panel, shown by default) is an exact, clickable
@@ -58,20 +58,36 @@ SwiftPM — just `clang` over `Sources/*.m`.
 ```
 Sources/
   main.m                     accessory NSApplication (no Dock icon)
-  AppDelegate.m              the brain: presents the bar (SPI), 1 Hz sampling,
-                             action handlers, full-bar takeover, LaunchAgent,
-                             sleep/wake pause, desktop mirror, settings
+  AppDelegate.m              the composition root: presents the bar (SPI), 1 Hz
+                             sampling, action handlers, full-bar takeover,
+                             LaunchAgent, sleep/wake pause, desktop mirror,
+                             settings. Delegates ⌘/⌥ to ModifierMonitor and the
+                             agent to AgentCoordinator.
   BarView.m                  all rendering + hit-testing. Modes, accordion tabs,
-                             tiles, sliders, swipe. (Drawn in a flipped view.)
+                             tiles, sliders, swipe, size-aware priority layout.
+                             (Drawn in a flipped view.)
   Stats.m                    cpu / per-core / mem(+swap) / net / battery / gpu /
                              disk io+space / top-process / uptime  (pure C, testable)
   Controls.m                 volume·mute (CoreAudio) · brightness (DisplayServices)
                              · media now-playing+transport+scrubber (MediaRemote)
   Pomodoro.m                 work/break timer model
+  ModifierMonitor.m          debounced ⌘/⌥ hold detection (NSEvent + Accessibility)
+  AgentCoordinator.m         PBAgent + chat window + push-to-talk + action dispatch
+  Agent.m                    Ollama (Gemma) client; JSON tool-calling protocol
+  AgentWindowController.m    chat window: bubbles, quick chips, voice capture
   SettingsWindowController.m desktop settings window (full-bar, login, top-proc, pomodoro)
+  LayoutEditorWindowController.m  size editor: per-tile size/priority/visibility + preview
+  PBDefaults.m               NSUserDefaults key constants (single source of truth)
+  PreviewData.m              canned sample telemetry for the editor preview + harnesses
   PrivateAPI.h               Touch Bar SPI declarations
 build.sh · run.command · tests/ · AGENTS.md · README.md
 ```
+
+Tile layout overrides from the size editor persist under
+`PBTile.<modeToken>.<tileToken>` keys; the editor and renderer share the key
+builder and the packing logic via `+[BarView overrideKeyForMode:type:]` and
+`+[BarView visibleTileNamesForMode:contentWidth:]` (the latter is unit-tested in
+`tests/layout_test.m`).
 
 ### How the "full Touch Bar regardless of focus" works
 Public `NSTouchBar` is focus-bound. PulseBar uses the same private SPI as

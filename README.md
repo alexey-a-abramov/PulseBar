@@ -98,11 +98,17 @@ Quit via the `▦` menu-bar icon → **Quit PulseBar** (or `pkill -x PulseBar`, 
 Sources/
   main.m                    accessory NSApplication (no Dock)
   AppDelegate.m             SPI presentation · 1 Hz sampling · actions · full-bar · LaunchAgent
-  BarView.m                 interactive tile rendering + hit-testing
+  BarView.m                 interactive tile rendering + hit-testing · size-aware layout
   Stats.m                   cpu/per-core/mem/net/battery/gpu/disk/top-process
   Controls.m                volume·mute (CoreAudio) · brightness (DisplayServices) · media (MediaRemote)
   Pomodoro.m                work/break timer model
+  ModifierMonitor.m         debounced ⌘/⌥ hold detection
+  AgentCoordinator.m        agent + chat window + push-to-talk + action dispatch
+  Agent.m · AgentWindowController.m   Ollama (Gemma) client · chat/voice window
   SettingsWindowController.m  desktop settings window
+  LayoutEditorWindowController.m  size editor (per-tile size/priority/visibility)
+  PBDefaults.m              NSUserDefaults key constants
+  PreviewData.m             canned sample telemetry for previews/harnesses
   PrivateAPI.h              Touch Bar SPI declarations
 ```
 
@@ -110,7 +116,7 @@ Sources/
 
 | What | Where |
 |------|-------|
-| Tiles shown / order / widths | `BarView.m` → `drawRect:` `defs[]` weights |
+| Tiles shown / order / widths | `BarView.m` → `tilesForMode()` (weight·priority·minW), or the in-app **Customize layout…** editor |
 | Sample rate | `AppDelegate.m` → `timerWithTimeInterval:1.0` |
 | Colours / thresholds | `BarView.m` colour helpers |
 | Pomodoro defaults | Settings window, or `Pomodoro.m` |
