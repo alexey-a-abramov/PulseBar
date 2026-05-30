@@ -132,8 +132,9 @@ sampler to `Stats`/`Controls` and feed it through `AppDelegate -tick` →
 - PulseBar parses it and executes the action through `-agentRunAction:args:`
   (CoreAudio / DisplayServices / MediaRemote / NSTask). 100% **on-device, offline,
   private** — nothing leaves the Mac.
-- Voice (next): on-device `SFSpeechRecognizer` STT → text → the same pipeline,
-  with a "listening" state in the window.
+- Voice: the mic button runs on-device `SFSpeechRecognizer` (offline when
+  supported) + `AVAudioEngine`; partial text streams into the input and is sent to
+  Gemma on final. Needs Microphone + Speech-Recognition permission (first use).
 
 **Memory & speed (Gemma 3 4B, Q4 on a 16 GB M1):** ~3.3 GB on disk; ~3.5–4.5 GB
 resident **only while loaded**. Ollama keeps it warm for ~5 min after the last
