@@ -57,8 +57,20 @@ clang -fobjc-arc -O0 -isysroot "$SDK" \
   -o "$BUILD/queries_test" || { echo "compile failed"; exit 1; }
 "$BUILD/queries_test"; QUERIES=$?
 
+echo
+echo "------------------------------------------------------------"
+echo " E2E — emulated voice commands through the agent (no UI)"
+echo "------------------------------------------------------------"
+clang -fobjc-arc -O0 -isysroot "$SDK" \
+  "$TESTS/voice_e2e.m" "$SRC/Agent.m" "$SRC/VoiceCommands.m" "$SRC/AppIndex.m" "$SRC/Queries.m" \
+  "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Log.m" \
+  -framework Foundation -framework CoreFoundation -framework IOKit -framework CoreAudio \
+  -framework CoreGraphics -framework AppKit -framework ApplicationServices \
+  -o "$BUILD/voice_e2e" || { echo "compile failed"; exit 1; }
+"$BUILD/voice_e2e" | grep -E "^   (ok|FAIL)|ALL TESTS|FAILED"; VOICE_E2E=${PIPESTATUS[0]}
+
 UNIT=0
-for r in "$STATS" "$LAYOUT" "$APPIDX" "$VOICE" "$QUERIES"; do [ "$r" -eq 0 ] || UNIT=1; done
+for r in "$STATS" "$LAYOUT" "$APPIDX" "$VOICE" "$QUERIES" "$VOICE_E2E"; do [ "$r" -eq 0 ] || UNIT=1; done
 
 echo
 echo "============================================================"
