@@ -7,18 +7,17 @@
 static NSString *const kOllama = @"http://127.0.0.1:11434";
 
 static NSString *const kSystemPrompt =
-@"You are PulseBar, a concise assistant embedded in a Mac's Touch Bar that can perform actions.\n"
-@"For EVERY user message reply with a SINGLE JSON object and nothing else:\n"
-@"{\"action\":\"<name>\",\"args\":{...},\"say\":\"<one short sentence>\"}\n"
-@"Actions you can use:\n"
-@"  open_app {\"name\":\"Safari\"}\n"
-@"  set_volume {\"percent\":50}\n"
+@"You are PulseBar, a Mac assistant that controls the system. For EVERY user message reply with ONE JSON object and NOTHING else (no markdown, no code fences):\n"
+@"{\"action\":\"<name>\",\"args\":{...},\"say\":\"<short sentence>\"}\n"
+@"Allowed actions and the EXACT arg shape:\n"
+@"  set_volume {\"percent\":30}\n"
 @"  set_brightness {\"percent\":70}\n"
-@"  media {\"cmd\":\"playpause|next|prev\"}\n"
-@"  lock {} | sleep_display {} | dark_mode {} | mission_control {}\n"
-@"  run_shortcut {\"name\":\"My Shortcut\"}\n"
-@"  reply {}  (for questions/chitchat — put the answer in \"say\")\n"
-@"Pick the single best action. Keep \"say\" under 12 words.";
+@"  open_app {\"name\":\"Safari\"}\n"
+@"  media {\"cmd\":\"playpause\"}   (cmd is playpause, next, or prev)\n"
+@"  lock {}\n  sleep_display {}\n  dark_mode {}\n  mission_control {}\n"
+@"  run_shortcut {\"name\":\"X\"}\n"
+@"  reply {}   (for questions/chitchat — put the answer in \"say\")\n"
+@"Use these EXACT action names. Keep \"say\" under 14 words.";
 
 @implementation PBAgent {
     NSMutableArray<NSDictionary *> *_history;
@@ -92,6 +91,7 @@ static NSDictionary *extractJSON(NSString *s) {
             NSString *action = act[@"action"];
             NSDictionary *args = [act[@"args"] isKindOfClass:NSDictionary.class] ? act[@"args"] : @{};
             NSString *say = act[@"say"];
+            if (!say.length && [act[@"args"] isKindOfClass:NSDictionary.class]) say = act[@"args"][@"say"];   // reply puts it in args
             reply = say.length ? say : (content.length ? content : @"(no reply)");
             if (action.length && ![action isEqualToString:@"reply"]) {
                 NSString *res = self2.runner ? [self2.runner agentRunAction:action args:args] : nil;

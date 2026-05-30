@@ -325,7 +325,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     if ([action isEqualToString:@"open_app"])        { NSString *n = args[@"name"]; if (n) [self launch:@"/usr/bin/open" args:@[@"-a", n]]; return [NSString stringWithFormat:@"Opening %@.", n ?: @"app"]; }
     if ([action isEqualToString:@"set_volume"])      { float p = [args[@"percent"] floatValue]; if (CtlGetMute()) CtlSetMute(NO); CtlSetVolume(p / 100.0f); return [NSString stringWithFormat:@"Volume set to %.0f%%.", p]; }
     if ([action isEqualToString:@"set_brightness"])  { float p = [args[@"percent"] floatValue]; CtlSetBrightness(p / 100.0f); return [NSString stringWithFormat:@"Brightness set to %.0f%%.", p]; }
-    if ([action isEqualToString:@"media"])           { NSString *cmd = args[@"cmd"]; if ([cmd isEqualToString:@"next"]) CtlMediaNext(); else if ([cmd isEqualToString:@"prev"]) CtlMediaPrev(); else [self barMediaPlayPause]; return @"Done."; }
+    if ([action isEqualToString:@"media"])           { NSString *cmd = args[@"cmd"]; if ([cmd isEqualToString:@"next"]) CtlMediaNext(); else if ([cmd isEqualToString:@"prev"] || [cmd isEqualToString:@"previous"]) CtlMediaPrev(); else [self barMediaPlayPause]; return @"Done."; }
     if ([action isEqualToString:@"lock"])            { [self barRunShortcut:@"lock"]; return @"Locking the screen."; }
     if ([action isEqualToString:@"sleep_display"])   { [self barRunShortcut:@"displaysleep"]; return @"Putting the display to sleep."; }
     if ([action isEqualToString:@"dark_mode"])       { [self barRunShortcut:@"darkmode"]; return @"Toggled dark mode."; }
