@@ -9,6 +9,7 @@
 #import "Controls.h"
 #import "Pomodoro.h"
 #import "SettingsWindowController.h"
+#import "LayoutEditorWindowController.h"
 #import "Agent.h"
 #import "AgentWindowController.h"
 #import "Log.h"
@@ -32,6 +33,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 @property (nonatomic, strong) dispatch_source_t     sigTerm, sigInt;
 @property (nonatomic, strong) Pomodoro             *pomo;
 @property (nonatomic, strong) SettingsWindowController *settings;
+@property (nonatomic, strong) LayoutEditorWindowController *layoutEditor;
 @property (nonatomic, strong) NSTask               *caffeine;
 @property (nonatomic) BOOL                          showTopProc;
 @property (nonatomic, strong) NSLayoutConstraint   *barWidth;
@@ -90,6 +92,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     }
 
     [self registerSleepWake];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(layoutChanged:)
+                                                 name:PBLayoutChangedNotification object:nil];
     [self resumeSampling];
 
     const char *sq = getenv("PULSEBAR_SELFQUIT");
@@ -187,6 +191,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Ask the Agent…"          action:@selector(barOpenAgent)   keyEquivalent:@"a"];
     [menu addItemWithTitle:@"Settings…"               action:@selector(showSettings)   keyEquivalent:@","];
+    [menu addItemWithTitle:@"Customize layout…"       action:@selector(showLayoutEditor) keyEquivalent:@""];
     [menu addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror) keyEquivalent:@"m"];
     [menu addItemWithTitle:@"Re-attach to Touch Bar"  action:@selector(attachToTouchBar) keyEquivalent:@"r"];
     [menu addItemWithTitle:@"Toggle CPU-core view"    action:@selector(toggleCores)     keyEquivalent:@"c"];
@@ -466,6 +471,10 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
     [self.settings present];
 }
+- (void)showLayoutEditor {
+    if (!self.layoutEditor) self.layoutEditor = [LayoutEditorWindowController new];
+    [self.layoutEditor present];
+}
 - (void)quit { _terminating = YES; [self detach]; [NSApp terminate:nil]; }
 
 #pragma mark - SettingsDelegate
@@ -493,7 +502,14 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     CtlSetMediaApp(a);
     [NSUserDefaults.standardUserDefaults setObject:a forKey:@"mediaApp"];
 }
+- (void)settingsEditLayout { [self showLayoutEditor]; }
 - (void)settingsQuit { [self quit]; }
+
+// Redraw the live bar (and mirror) when the size editor saves a change.
+- (void)layoutChanged:(NSNotification *)n {
+    [self.barView setNeedsDisplay:YES];
+    [self.mirrorBar setNeedsDisplay:YES];
+}
 
 #pragma mark - full-bar takeover (reversible)
 

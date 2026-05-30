@@ -7,6 +7,8 @@
 #import "BarView.h"
 #import "Pomodoro.h"
 
+NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
+
 typedef NS_ENUM(NSInteger, TileType) {
     TCPU, TMEM, TGPU, TNET, TDISK, TUPTIME,
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
@@ -88,6 +90,43 @@ static int tilesForMode(NSInteger m, TileDef *out) {
     }
     #undef ADD
     return n;
+}
+
+// Human-readable tile name for the layout editor.
+static NSString *tileName(TileType t) {
+    switch (t) {
+        case TCPU: return @"CPU";          case TMEM: return @"Memory";       case TGPU: return @"GPU";
+        case TNET: return @"Network";      case TDISK: return @"Disk I/O";    case TUPTIME: return @"Uptime";
+        case TBATT: return @"Battery";     case TMEDIA: return @"Now Playing";case TVOL: return @"Volume";
+        case TMUTE: return @"Mute";        case TBRIGHT: return @"Brightness";case TPOMO: return @"Pomodoro";
+        case TCAFFEINE: return @"Caffeine";case TSC_NOTE: return @"New Note"; case TSC_REMIND: return @"Reminder";
+        case TSC_LOCK: return @"Lock";     case TSC_SLEEP: return @"Sleep";   case TSC_SHOT: return @"Screenshot";
+        case TSC_DARK: return @"Dark Mode";case TSC_MISSION: return @"Mission Control";
+        case TSC_LAUNCH: return @"Launchpad"; case TSC_ACTIVITY: return @"Activity";
+        default: return @"—";
+    }
+}
+
+// Per-tile override key, e.g. "PBTile.0.3" (mode 0, TileType 3).
+static NSString *tileOverrideKey(NSInteger mode, TileType t) {
+    return [NSString stringWithFormat:@"PBTile.%ld.%d", (long)mode, (int)t];
+}
+
+// Overlay persisted size-editor overrides on the built-in defaults, dropping
+// any tile the user force-hid. Compacts in place; updates *pn.
+static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    int n = *pn, out = 0;
+    for (int i = 0; i < n; i++) {
+        NSDictionary *o = [ud dictionaryForKey:tileOverrideKey(mode, defs[i].type)];
+        if (o) {
+            if ([o[@"hidden"] boolValue]) continue;                       // force-hidden → drop
+            if (o[@"w"])    defs[i].weight = MAX(0.2, [o[@"w"] doubleValue]);
+            if (o[@"prio"]) defs[i].prio   = [o[@"prio"] intValue];
+        }
+        defs[out++] = defs[i];
+    }
+    *pn = out;
 }
 
 // Lightweight, env-gated tracing (PULSEBAR_DEBUG=1) for diagnosing input.
@@ -428,6 +467,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 - (void)modeContent:(NSInteger)mode in:(NSRect)area draw:(BOOL)draw record:(BOOL)record {
     TileDef defs[16];
     int n = tilesForMode(mode, defs);
+    applyTileOverrides(mode, defs, &n);   // size-editor overrides (weight/prio/force-hide)
     if (n <= 0) return;
     CGFloat pad = 4, avail = area.size.width - pad * 2;
 
@@ -655,6 +695,37 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         case TVOL:    [d barToggleMute]; break;   // tap on the speaker icon = mute
         default: break;
     }
+}
+
+@end
+
+#pragma mark - Layout editor support
+
+@implementation BarView (Layout)
+
++ (NSString *)nameForMode:(NSInteger)mode {
+    switch (mode) {
+        case BarModeSystem:       return @"System";
+        case BarModeMedia:        return @"Media";
+        case BarModeProductivity: return @"Productivity";
+        case BarModeClassic:      return @"Classic";
+        case BarModeShortcuts:    return @"Shortcuts";
+        default:                  return @"Mode";
+    }
+}
+
++ (NSArray<NSDictionary *> *)defaultLayoutForMode:(NSInteger)mode {
+    TileDef defs[16];
+    int n = tilesForMode(mode, defs);
+    NSMutableArray *out = [NSMutableArray arrayWithCapacity:n];
+    for (int i = 0; i < n; i++) {
+        [out addObject:@{ @"type":   @(defs[i].type),
+                          @"name":   tileName(defs[i].type),
+                          @"weight": @(defs[i].weight),
+                          @"prio":   @(defs[i].prio),
+                          @"minW":   @(defs[i].minW) }];
+    }
+    return out;
 }
 
 @end

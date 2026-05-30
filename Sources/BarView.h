@@ -61,3 +61,14 @@ typedef NS_ENUM(NSInteger, BarMode) {
            nowPlaying:(NowPlaying)np volume:(float)vol mute:(BOOL)mute brightness:(float)bright;
 
 @end
+
+// Posted (on the default center) when the size editor saves a layout change.
+extern NSString * const PBLayoutChangedNotification;
+
+// Size/layout editor support: enumerate a mode's built-in tile specs.
+@interface BarView (Layout)
++ (NSString *)nameForMode:(NSInteger)mode;
+// Ordered specs for a mode. Each dict: @"type"(NSNumber TileType), @"name"(NSString),
+// @"weight"(NSNumber), @"prio"(NSNumber), @"minW"(NSNumber).
++ (NSArray<NSDictionary *> *)defaultLayoutForMode:(NSInteger)mode;
+@end

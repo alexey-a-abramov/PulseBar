@@ -16,6 +16,7 @@
 - (void)settingsSetTopProc:(BOOL)on;
 - (NSString *)settingsMediaApp;
 - (void)settingsSetMediaApp:(NSString *)app;
+- (void)settingsEditLayout;
 - (void)settingsQuit;
 @end
 

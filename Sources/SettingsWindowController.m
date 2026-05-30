@@ -84,6 +84,11 @@ static NSTextField *label(NSString *s, NSRect f, CGFloat sz, BOOL bold) {
     NSTextField *mh = label(@"play/pause target for the bar (e.g. Spotify, Music)", NSMakeRect(20, top - 310, W - 40, 14), 9, NO);
     mh.textColor = [NSColor secondaryLabelColor]; [c addSubview:mh];
 
+    NSButton *layout = [NSButton buttonWithTitle:@"Customize layout…" target:self action:@selector(editLayout:)];
+    layout.frame = NSMakeRect(20, 18, 170, 30);
+    layout.bezelStyle = NSBezelStyleRounded;
+    [c addSubview:layout];
+
     NSButton *quit = [NSButton buttonWithTitle:@"Quit PulseBar" target:self action:@selector(doQuit:)];
     quit.frame = NSMakeRect(W - 140, 18, 120, 30);
     quit.bezelStyle = NSBezelStyleRounded;
@@ -125,6 +130,7 @@ static NSTextField *label(NSString *s, NSRect f, CGFloat sz, BOOL bold) {
     _breakVal.stringValue = [NSString stringWithFormat:@"%ld min", (long)s.integerValue];
     [_delegate settingsSetWork:_workStep.integerValue breakMin:s.integerValue];
 }
+- (void)editLayout:(id)s { [_delegate settingsEditLayout]; }
 - (void)doQuit:(id)s { [_delegate settingsQuit]; }
 
 @end
