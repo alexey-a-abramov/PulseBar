@@ -1,11 +1,22 @@
 //
-//  BarView.h — interactive full-width Touch Bar surface.
+//  BarView.h — interactive, multi-mode Touch Bar surface with an animated
+//  accordion mode switcher.
 //
 #import <AppKit/AppKit.h>
 #import "Stats.h"
 #import "Controls.h"
 
 @class Pomodoro;
+
+// Mode order matches the accordion tabs on the left.
+typedef NS_ENUM(NSInteger, BarMode) {
+    BarModeSystem,
+    BarModeMedia,
+    BarModeProductivity,
+    BarModeClassic,
+    BarModeShortcuts,
+    BarModeCount
+};
 
 @protocol BarActionDelegate <NSObject>
 - (void)barSetVolume:(float)v;
@@ -15,7 +26,10 @@
 - (void)barMediaNext;
 - (void)barMediaPrev;
 - (void)barTogglePomodoro;
+- (void)barToggleCaffeine;
+- (void)barRunShortcut:(NSString *)action;
 - (void)barOpenSettings;
+- (void)barDidChangeMode:(NSInteger)mode;
 @end
 
 @interface BarView : NSView
@@ -23,6 +37,10 @@
 @property (nonatomic, weak) id<BarActionDelegate> actionDelegate;
 @property (nonatomic, weak) Pomodoro *pomodoro;
 @property (nonatomic) BOOL showCores;          // CPU tile: sparkline vs per-core
+@property (nonatomic) BOOL caffeinated;        // caffeine toggle state
+@property (nonatomic, readonly) NSInteger mode;
+
+- (void)setMode:(NSInteger)mode animated:(BOOL)animated;
 
 - (void)updateWithCPU:(double)cpu cores:(const double *)cores count:(int)n
                   mem:(MemInfo)mem net:(NetSample)net gpu:(double)gpu

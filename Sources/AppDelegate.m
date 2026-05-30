@@ -26,6 +26,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 @property (nonatomic, strong) dispatch_source_t     sigTerm, sigInt;
 @property (nonatomic, strong) Pomodoro             *pomo;
 @property (nonatomic, strong) SettingsWindowController *settings;
+@property (nonatomic, strong) NSTask               *caffeine;
+@property (nonatomic) BOOL                          showTopProc;
 @end
 
 @implementation AppDelegate {
@@ -52,8 +54,10 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     self.pomo.breakMinutes = [ud objectForKey:@"break"] ? [ud integerForKey:@"break"] : 5;
     __weak AppDelegate *ws = self;
     self.pomo.onComplete = ^(BOOL wasWork) { [ws pomodoroFinished:wasWork]; };
+    self.showTopProc = [ud objectForKey:@"showTopProc"] ? [ud boolForKey:@"showTopProc"] : YES;
 
     [self buildBars];
+    [self.barView setMode:[ud integerForKey:@"mode"] animated:NO];   // restore last mode
     [self buildStatusItem];
     [self attachToTouchBar];
 
@@ -151,6 +155,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 }
 
 - (void)detach {
+    if (self.caffeine) { [self.caffeine terminate]; self.caffeine = nil; }
     Class TB = NSClassFromString(@"NSTouchBar");
     if (_setPresence) _setPresence(kStripID, NO);
     if ([TB respondsToSelector:@selector(dismissSystemModalTouchBar:)]) [NSTouchBar dismissSystemModalTouchBar:self.fullBar];
@@ -173,7 +178,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     DiskIO disk = StatsDiskIO();
     DiskSpace space = StatsDiskSpace();
     BatteryInfo bat = StatsBattery();
-    if (_tick % 3 == 0) StatsTopProcess(_topBuf, sizeof(_topBuf), &_topCPU);
+    if (self.showTopProc) { if (_tick % 3 == 0) StatsTopProcess(_topBuf, sizeof(_topBuf), &_topCPU); }
+    else { _topBuf[0] = '\0'; _topCPU = 0; }
     _tick++;
 
     CtlMediaRefresh();
@@ -199,6 +205,33 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)barMediaPrev            { CtlMediaPrev(); }
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
 - (void)barOpenSettings         { [self showSettings]; }
+- (void)barDidChangeMode:(NSInteger)mode { [NSUserDefaults.standardUserDefaults setInteger:mode forKey:@"mode"]; }
+
+- (void)barToggleCaffeine {
+    if (self.caffeine) { [self.caffeine terminate]; self.caffeine = nil; }
+    else {
+        NSTask *t = [NSTask new]; t.launchPath = @"/usr/bin/caffeinate"; t.arguments = @[@"-disu"];
+        @try { [t launch]; } @catch (id e) { t = nil; }
+        self.caffeine = t;
+    }
+    self.barView.caffeinated = (self.caffeine != nil);
+    [self.barView setNeedsDisplay:YES];
+}
+
+- (void)barRunShortcut:(NSString *)a {
+    if      ([a isEqualToString:@"lock"])           [self launch:@"/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession" args:@[@"-suspend"]];
+    else if ([a isEqualToString:@"displaysleep"])   [self launch:@"/usr/bin/pmset" args:@[@"displaysleepnow"]];
+    else if ([a isEqualToString:@"screenshot"])     [self launch:@"/usr/sbin/screencapture" args:@[@"-ic"]];
+    else if ([a isEqualToString:@"darkmode"])       [self launch:@"/usr/bin/osascript" args:@[@"-e", @"tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode"]];
+    else if ([a isEqualToString:@"missioncontrol"]) [self launch:@"/usr/bin/open" args:@[@"-a", @"Mission Control"]];
+    else if ([a isEqualToString:@"newnote"])        [self launch:@"/usr/bin/open" args:@[@"-a", @"Notes"]];
+}
+
+// fire-and-forget (don't block the main thread, unlike -run:args:)
+- (void)launch:(NSString *)path args:(NSArray<NSString *> *)args {
+    NSTask *t = [NSTask new]; t.launchPath = path; t.arguments = args;
+    @try { [t launch]; } @catch (id e) {}
+}
 
 - (void)pomodoroFinished:(BOOL)wasWork {
     NSSound *s = [NSSound soundNamed:wasWork ? @"Glass" : @"Funk"];
@@ -226,6 +259,11 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     self.pomo.workMinutes = w; self.pomo.breakMinutes = b;
     [NSUserDefaults.standardUserDefaults setInteger:w forKey:@"work"];
     [NSUserDefaults.standardUserDefaults setInteger:b forKey:@"break"];
+}
+- (BOOL)settingsTopProcEnabled { return self.showTopProc; }
+- (void)settingsSetTopProc:(BOOL)on {
+    self.showTopProc = on;
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:@"showTopProc"];
 }
 - (void)settingsQuit { [self quit]; }
 

@@ -5,7 +5,7 @@
 
 @implementation SettingsWindowController {
     __weak id<SettingsDelegate> _delegate;
-    NSButton   *_fullBar, *_login;
+    NSButton   *_fullBar, *_login, *_topProc;
     NSStepper  *_workStep, *_breakStep;
     NSTextField *_workVal, *_breakVal;
 }
@@ -48,10 +48,15 @@ static NSTextField *label(NSString *s, NSRect f, CGFloat sz, BOOL bold) {
     [c addSubview:fbHelp];
 
     _login = [NSButton checkboxWithTitle:@"Start PulseBar at login" target:self action:@selector(toggleLogin:)];
-    _login.frame = NSMakeRect(20, top - 160, W - 40, 20);
+    _login.frame = NSMakeRect(20, top - 158, W - 40, 20);
     [c addSubview:_login];
 
-    [c addSubview:label(@"Pomodoro", NSMakeRect(20, top - 196, 120, 18), 12, YES)];
+    _topProc = [NSButton checkboxWithTitle:@"Show top CPU process (uses a little more CPU)"
+                                    target:self action:@selector(toggleTopProc:)];
+    _topProc.frame = NSMakeRect(20, top - 180, W - 40, 20);
+    [c addSubview:_topProc];
+
+    [c addSubview:label(@"Pomodoro", NSMakeRect(20, top - 208, 120, 18), 12, YES)];
 
     [c addSubview:label(@"Work", NSMakeRect(20, top - 222, 50, 18), 11, NO)];
     _workStep = [[NSStepper alloc] initWithFrame:NSMakeRect(110, top - 224, 20, 24)];
@@ -86,6 +91,7 @@ static NSTextField *label(NSString *s, NSRect f, CGFloat sz, BOOL bold) {
 - (void)syncFromDelegate {
     _fullBar.state = [_delegate settingsFullBarEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
     _login.state   = [_delegate settingsLoginEnabled]   ? NSControlStateValueOn : NSControlStateValueOff;
+    _topProc.state = [_delegate settingsTopProcEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
     NSInteger wm = [_delegate settingsWorkMinutes], bm = [_delegate settingsBreakMinutes];
     _workStep.integerValue = wm; _breakStep.integerValue = bm;
     _workVal.stringValue = [NSString stringWithFormat:@"%ld min", (long)wm];
@@ -95,6 +101,7 @@ static NSTextField *label(NSString *s, NSRect f, CGFloat sz, BOOL bold) {
 - (void)toggleFullBar:(NSButton *)b { [_delegate settingsSetFullBar:(b.state == NSControlStateValueOn)]; }
 - (void)toggleLogin:(NSButton *)b   { [_delegate settingsSetLogin:(b.state == NSControlStateValueOn)];
                                        [self syncFromDelegate]; }
+- (void)toggleTopProc:(NSButton *)b { [_delegate settingsSetTopProc:(b.state == NSControlStateValueOn)]; }
 - (void)changeWork:(NSStepper *)s {
     _workVal.stringValue = [NSString stringWithFormat:@"%ld min", (long)s.integerValue];
     [_delegate settingsSetWork:s.integerValue breakMin:_breakStep.integerValue];
