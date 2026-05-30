@@ -5,15 +5,30 @@ which app is focused** — and turns it into a live system monitor *and* a contr
 surface you can actually press.
 
 ```
-CPU(+top proc) · MEM · GPU · NET · DISK │ ◀ ⏯ ▶ NowPlaying │ 🔊VOL │ ☀BRIGHT │ ⏱Pomodoro │ BATT │ CLOCK │ ⚙
-└──────────── live metrics ────────────┘└──────────────── actionable controls ──────────────────┘
+[ SYSTEM | ♪ | ⏱ | ◐ | ⚡ ]  ◀ active mode panel (animates open) ▶   …always:  BATT · CLOCK · ⚙
+  └ accordion mode tabs: the active one expands with a label; tap to switch (content cross-fades)
 ```
 
-## What it shows / does
+## Modes (animated accordion)
+
+Tap a tab on the left to switch modes — the active tab expands (the "accordion"),
+the panel cross-fades, and your choice is remembered:
+
+| Mode | Contents |
+|------|----------|
+| **System**  | CPU (+ top process) · MEM (+ swap) · GPU · NET · DISK |
+| **Media**   | now-playing transport (◀ ⏯ ▶) · volume |
+| **Focus**   | Pomodoro · ☕ caffeine keep-awake · New Note · Lock |
+| **Classic** | brightness · volume · media (the Control-Strip basics) |
+| **Actions** | Lock · Display-Sleep · Screenshot · Dark Mode · Mission Control · caffeine |
+
+Battery, clock and the ⚙ gear stay pinned on the right in every mode.
+
+## Tiles (across modes)
 
 **Metrics (glanceable):**
 - **CPU** — % + sparkline + the current **top CPU process**. *Tap* to switch to a per-core view (P+E cores).
-- **MEM** — used / total GB + gauge (active + wired + compressed).
+- **MEM** — used / total GB + gauge (active + wired + compressed); shows **swap** used when memory spills over.
 - **GPU** — utilisation % + sparkline (IOAccelerator).
 - **NET** — live ↓ / ↑ throughput + sparkline.
 - **DISK** — read/write I/O + free space.
@@ -46,8 +61,12 @@ Touch Bar overrides.
 Tapping the gear on the Touch Bar brings up a desktop window with:
 - **Take over the entire Touch Bar** (full-bar takeover, above)
 - **Start at login** — installs/removes a LaunchAgent (`~/Library/LaunchAgents/com.fun.pulsebar.plist`)
+- **Show top CPU process** — toggle off to skip the per-tick `ps` sampling (saves a little CPU)
 - **Pomodoro** work / break durations
 - **Quit PulseBar**
+
+Some Actions prompt for permission the first time (Screenshot → Screen Recording,
+Dark Mode → Automation); macOS will ask once.
 
 ## How "full bar regardless of focus" works
 
