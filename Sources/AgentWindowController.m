@@ -2,6 +2,8 @@
 //  AgentWindowController.m
 //
 #import "AgentWindowController.h"
+#import <Speech/Speech.h>
+#import <AVFoundation/AVFoundation.h>
 
 @interface AgentWindowController () <NSTextFieldDelegate>
 @end
@@ -12,7 +14,14 @@
     NSTextField *_input;
     NSTextField *_status;
     NSButton    *_send;
+    NSButton    *_mic;
     BOOL         _busy;
+    // voice
+    SFSpeechRecognizer *_recognizer;
+    SFSpeechAudioBufferRecognitionRequest *_req;
+    SFSpeechRecognitionTask *_task;
+    AVAudioEngine *_engine;
+    BOOL          _listening;
 }
 
 - (instancetype)initWithAgent:(PBAgent *)agent {
@@ -48,11 +57,17 @@
     scroll.documentView = _transcript;
     [c addSubview:scroll];
 
-    _input = [[NSTextField alloc] initWithFrame:NSMakeRect(12, 12, W - 24 - 76, 28)];
-    _input.placeholderString = @"Ask or command… (e.g. “set volume to 30”, “open Safari”)";
+    _input = [[NSTextField alloc] initWithFrame:NSMakeRect(12, 12, W - 24 - 76 - 36, 28)];
+    _input.placeholderString = @"Ask or command… (or tap 🎙 to speak)";
     _input.delegate = self;
     _input.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
     [c addSubview:_input];
+
+    _mic = [NSButton buttonWithTitle:@"🎙" target:self action:@selector(toggleMic:)];
+    _mic.frame = NSMakeRect(W - 12 - 70 - 36, 11, 32, 30);
+    _mic.bezelStyle = NSBezelStyleRounded;
+    _mic.autoresizingMask = NSViewMinXMargin | NSViewMaxYMargin;
+    [c addSubview:_mic];
 
     _send = [NSButton buttonWithTitle:@"Send" target:self action:@selector(send:)];
     _send.frame = NSMakeRect(W - 12 - 70, 11, 70, 30);
@@ -109,6 +124,66 @@
 - (void)controlTextDidEndEditing:(NSNotification *)n {
     NSNumber *reason = n.userInfo[@"NSTextMovement"];
     if (reason.integerValue == NSReturnTextMovement) [self send:nil];
+}
+
+#pragma mark - voice (on-device speech → text → agent)
+
+- (void)toggleMic:(id)s {
+    if (_listening) { [self stopListening]; if (_input.stringValue.length) [self send:nil]; }
+    else            { [self startListening]; }
+}
+
+- (void)startListening {
+    [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus st) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (st != SFSpeechRecognizerAuthorizationStatusAuthorized) {
+                self->_status.stringValue = @"⚠︎ Allow Speech Recognition in System Settings → Privacy"; return;
+            }
+            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (!granted) { self->_status.stringValue = @"⚠︎ Allow Microphone in System Settings → Privacy"; return; }
+                    [self beginCapture];
+                });
+            }];
+        });
+    }];
+}
+
+- (void)beginCapture {
+    _recognizer = [[SFSpeechRecognizer alloc] init];
+    if (!_recognizer || !_recognizer.isAvailable) { _status.stringValue = @"⚠︎ Speech recognizer unavailable"; return; }
+    _engine = [[AVAudioEngine alloc] init];
+    _req = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
+    _req.shouldReportPartialResults = YES;
+    if (_recognizer.supportsOnDeviceRecognition) _req.requiresOnDeviceRecognition = YES;   // private, offline
+
+    AVAudioInputNode *input = _engine.inputNode;
+    AVAudioFormat *fmt = [input outputFormatForBus:0];
+    SFSpeechAudioBufferRecognitionRequest *req = _req;   // capture the request, not self
+    [input installTapOnBus:0 bufferSize:1024 format:fmt block:^(AVAudioPCMBuffer *buf, AVAudioTime *when) {
+        [req appendAudioPCMBuffer:buf];
+    }];
+    [_engine prepare];
+    NSError *err = nil;
+    if (![_engine startAndReturnError:&err]) { _status.stringValue = [NSString stringWithFormat:@"⚠︎ audio: %@", err.localizedDescription]; [self stopListening]; return; }
+
+    _listening = YES; _mic.title = @"◉"; _input.stringValue = @"";
+    _status.stringValue = @"🎙 Listening… (tap 🎙 again to send)";
+    _task = [_recognizer recognitionTaskWithRequest:_req resultHandler:^(SFSpeechRecognitionResult *result, NSError *error) {
+        if (result) {
+            self->_input.stringValue = result.bestTranscription.formattedString;
+            if (result.isFinal) { NSString *t = self->_input.stringValue; [self stopListening]; if (t.length) [self send:nil]; }
+        }
+        if (error) [self stopListening];
+    }];
+}
+
+- (void)stopListening {
+    if (_engine) { [_engine stop]; [_engine.inputNode removeTapOnBus:0]; }
+    [_req endAudio]; [_task cancel];
+    _engine = nil; _req = nil; _task = nil; _listening = NO;
+    _mic.title = @"🎙";
+    if ([_status.stringValue hasPrefix:@"🎙"]) [self refreshStatus];
 }
 
 @end

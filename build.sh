@@ -33,6 +33,8 @@ cat > "$APPDIR/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHumanReadableCopyright</key><string>Open source. Uses private Touch Bar SPI.</string>
+  <key>NSMicrophoneUsageDescription</key><string>PulseBar listens to your voice commands for the agent.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>PulseBar transcribes your voice commands (on-device) for the agent.</string>
 </dict>
 </plist>
 PLIST
@@ -47,6 +49,7 @@ clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
   "$SRC/SettingsWindowController.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
   -framework AppKit -framework Foundation -framework CoreFoundation \
   -framework IOKit -framework QuartzCore -framework CoreGraphics -framework CoreAudio \
+  -framework Speech -framework AVFoundation -framework ApplicationServices \
   -o "$MACOS/$APP_NAME"
 
 # Ad-hoc code signature (private API needs no entitlements; this just keeps
