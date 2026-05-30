@@ -5,6 +5,7 @@
 #import "AppDelegate.h"
 #import "PrivateAPI.h"
 #import "PBDefaults.h"
+#import "TouchBarPresenter.h"
 #import "BarView.h"
 #import "Stats.h"
 #import "Controls.h"
@@ -18,17 +19,11 @@
 #import <signal.h>
 #import <ApplicationServices/ApplicationServices.h>
 
-static NSTouchBarItemIdentifier const kBarItemID = @"com.fun.pulsebar.main";
-static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
-
 @interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate, PBAgentHost, PBModifierMonitorDelegate>
-@property (nonatomic, strong) NSTouchBar           *fullBar;
-@property (nonatomic, strong) NSCustomTouchBarItem  *barItem;
+@property (nonatomic, strong) PBTouchBarPresenter  *presenter;
 @property (nonatomic, strong) BarView              *barView;
 @property (nonatomic, strong) NSPanel              *mirrorPanel;
 @property (nonatomic, strong) BarView              *mirrorBar;
-@property (nonatomic, strong) NSCustomTouchBarItem  *stripItem;
-@property (nonatomic, strong) NSButton             *stripButton;
 @property (nonatomic, strong) NSStatusItem         *statusItem;
 @property (nonatomic, strong) NSTimer              *timer;
 @property (nonatomic, strong) dispatch_source_t     sigTerm, sigInt;
@@ -37,18 +32,13 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 @property (nonatomic, strong) LayoutEditorWindowController *layoutEditor;
 @property (nonatomic, strong) NSTask               *caffeine;
 @property (nonatomic) BOOL                          showTopProc;
-@property (nonatomic, strong) NSLayoutConstraint   *barWidth;
 @end
 
 @implementation AppDelegate {
-    void *_dfr;
-    DFRElementSetControlStripPresenceFn _setPresence;
-    DFRSystemModalShowsCloseBoxFn       _showCloseBox;
     double      _cores[128];
     char        _topBuf[256];
     double      _topCPU;
     NSInteger   _tick;
-    BOOL        _spiOK;
     BOOL        _terminating;
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
@@ -60,7 +50,6 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
     PBLogInit();
     [self installSignalHandlers];
-    [self loadDFR];
     CtlMediaInit();
 
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
@@ -96,7 +85,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     const char *sq = getenv("PULSEBAR_SELFQUIT");
     if (sq) { double s = atof(sq); if (s > 0) [self performSelector:@selector(quit) withObject:nil afterDelay:s]; }
     if (getenv("PULSEBAR_OPEN_AGENT")) [self barOpenAgent];   // test hook
-    PBLog(@"launched (spi=%@)", _spiOK ? @"available" : @"UNAVAILABLE");
+    PBLog(@"launched (spi=%@)", self.presenter.spiAvailable ? @"available" : @"UNAVAILABLE");
 }
 
 - (void)applicationWillTerminate:(NSNotification *)note { _terminating = YES; [self detach]; }
@@ -126,46 +115,16 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     dispatch_source_set_event_handler(self.sigInt, ^{ [self quit]; }); dispatch_resume(self.sigInt);
 }
 
-- (void)loadDFR {
-    _dfr = dlopen("/System/Library/PrivateFrameworks/DFRFoundation.framework/DFRFoundation", RTLD_LAZY);
-    if (_dfr) {
-        _setPresence  = (DFRElementSetControlStripPresenceFn)dlsym(_dfr, "DFRElementSetControlStripPresenceForIdentifier");
-        _showCloseBox = (DFRSystemModalShowsCloseBoxFn)dlsym(_dfr, "DFRSystemModalShowsCloseBoxWhenFrontMost");
-    }
-}
-
 #pragma mark - bars
 
 - (void)buildBars {
     // Full Touch Bar is ~1085pt; the app region with Control Strip shown is ~1004pt.
     BOOL full = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar];
     self.barView = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, full ? 1085 : 1004, 30)];
-    self.barView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.barWidth = [self.barView.widthAnchor constraintEqualToConstant:(full ? 1085 : 1004)];
-    self.barWidth.active = YES;
-    [self.barView.heightAnchor constraintEqualToConstant:30].active = YES;
     self.barView.actionDelegate = self;
     self.barView.pomodoro = self.pomo;
     self.barView.animateModeSwitch = NO;   // don't hammer the live DFR with a 60fps transition
-
-    self.barItem = [[NSCustomTouchBarItem alloc] initWithIdentifier:kBarItemID];
-    self.barItem.view = self.barView;
-
-    self.fullBar = [[NSTouchBar alloc] init];
-    self.fullBar.delegate = self;
-    self.fullBar.defaultItemIdentifiers = @[kBarItemID];
-
-    self.stripButton = [NSButton buttonWithTitle:@"PulseBar" target:self action:@selector(attachToTouchBar)];
-    self.stripButton.bezelStyle = NSBezelStyleRounded;
-    self.stripButton.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightBold];
-    self.stripItem = [[NSCustomTouchBarItem alloc] initWithIdentifier:kStripID];
-    self.stripItem.view = self.stripButton;
-}
-
-- (NSTouchBarItem *)touchBar:(NSTouchBar *)touchBar makeItemForIdentifier:(NSTouchBarItemIdentifier)identifier {
-    if ([identifier isEqualToString:kBarItemID]) return self.barItem;
-    if ([identifier isEqualToString:kStripID])   return self.stripItem;
-    return nil;
+    self.presenter = [[PBTouchBarPresenter alloc] initWithContentView:self.barView];
 }
 
 - (void)buildStatusItem {
@@ -243,34 +202,11 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
 #pragma mark - Touch Bar attach / detach
 
-- (void)attachToTouchBar {
-    Class TB = NSClassFromString(@"NSTouchBar");
-    if ([NSTouchBarItem respondsToSelector:@selector(addSystemTrayItem:)]) [NSTouchBarItem addSystemTrayItem:self.stripItem];
-    if (_setPresence)  _setPresence(kStripID, YES);
-    if (_showCloseBox) _showCloseBox(NO);
-
-    if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:systemTrayItemIdentifier:)]) {
-        [NSTouchBar presentSystemModalTouchBar:self.fullBar systemTrayItemIdentifier:kStripID];
-        _spiOK = YES; PBLog(@"presented full Touch Bar (2-arg SPI)");
-    } else if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:placement:systemTrayItemIdentifier:)]) {
-        [NSTouchBar presentSystemModalTouchBar:self.fullBar placement:1 systemTrayItemIdentifier:kStripID];
-        _spiOK = YES; PBLog(@"presented full Touch Bar (placement SPI)");
-    } else {
-        _spiOK = NO; PBLog(@"Touch Bar SPI unavailable");
-    }
-}
+- (void)attachToTouchBar { [self.presenter attach]; }
 
 - (void)detach {
     if (self.caffeine) { [self.caffeine terminate]; self.caffeine = nil; }
-    Class TB = NSClassFromString(@"NSTouchBar");
-    if (_setPresence) _setPresence(kStripID, NO);
-    if ([TB respondsToSelector:@selector(dismissSystemModalTouchBar:)]) [NSTouchBar dismissSystemModalTouchBar:self.fullBar];
-    if ([NSTouchBarItem respondsToSelector:@selector(removeSystemTrayItem:)]) [NSTouchBarItem removeSystemTrayItem:self.stripItem];
-    // never leave the user stuck without a Control Strip
-    if ([NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar]) {
-        [self writeTBMode:([NSUserDefaults.standardUserDefaults stringForKey:PBKeyTBBackup] ?: @"appWithControlStrip")];
-        [self restartTB];
-    }
+    [self.presenter detach];
 }
 
 #pragma mark - sampling
@@ -309,7 +245,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [self.barView updateWithCPU:cpu cores:_cores count:n mem:mem net:net gpu:gpu
                            disk:disk space:space battery:bat topProc:tp topCPU:_topCPU
                      nowPlaying:np volume:vol mute:mute brightness:bright];
-    self.stripButton.title = [NSString stringWithFormat:@"⟂ %.0f%%", cpu];
+    [self.presenter setStripTitle:[NSString stringWithFormat:@"⟂ %.0f%%", cpu]];
 
     if (self.mirrorPanel.isVisible) {   // keep the desktop mirror in lock-step
         self.mirrorBar.uptime = self.barView.uptime;
@@ -478,6 +414,9 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
 #pragma mark - full-bar takeover (reversible)
 
+- (void)applyFullBar:(BOOL)on { [self.presenter applyFullBar:on]; }
+
+// Run a process and capture trimmed stdout (used by the login-item helpers).
 - (NSString *)run:(NSString *)path args:(NSArray<NSString *> *)args {
     NSTask *t = [NSTask new]; t.launchPath = path; t.arguments = args;
     NSPipe *out = [NSPipe pipe]; t.standardOutput = out; t.standardError = [NSPipe pipe];
@@ -486,25 +425,6 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [t waitUntilExit];
     return [[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]
             stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-}
-- (NSString *)readTBMode { return [self run:@"/usr/bin/defaults" args:@[@"read", @"com.apple.touchbar.agent", @"PresentationModeGlobal"]]; }
-- (void)writeTBMode:(NSString *)m { [self run:@"/usr/bin/defaults" args:@[@"write", @"com.apple.touchbar.agent", @"PresentationModeGlobal", @"-string", m]]; }
-- (void)restartTB { [self run:@"/usr/bin/killall" args:@[@"TouchBarServer"]]; [self run:@"/usr/bin/killall" args:@[@"ControlStrip"]]; }
-
-- (void)applyFullBar:(BOOL)on {
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    if (on) {
-        NSString *cur = [self readTBMode];
-        if (cur.length && ![cur isEqualToString:@"app"]) [ud setObject:cur forKey:PBKeyTBBackup];
-        [self writeTBMode:@"app"];
-    } else {
-        [self writeTBMode:([ud stringForKey:PBKeyTBBackup] ?: @"appWithControlStrip")];
-    }
-    [ud setBool:on forKey:PBKeyFullBar];
-    self.barWidth.constant = on ? 1085 : 1004;   // fill the freed Control-Strip space
-    [self restartTB];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.3 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ [self attachToTouchBar]; });
 }
 
 #pragma mark - login item (LaunchAgent)
