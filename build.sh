@@ -48,7 +48,7 @@ clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
   "$SRC/BarView.m" "$SRC/PreviewData.m" \
   "$SRC/Agent.m" "$SRC/AgentWindowController.m" \
   "$SRC/SettingsWindowController.m" "$SRC/LayoutEditorWindowController.m" \
-  "$SRC/AppDelegate.m" "$SRC/main.m" \
+  "$SRC/ModifierMonitor.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
   -framework AppKit -framework Foundation -framework CoreFoundation \
   -framework IOKit -framework QuartzCore -framework CoreGraphics -framework CoreAudio \
   -framework Speech -framework AVFoundation -framework ApplicationServices \

@@ -11,6 +11,7 @@
 #import "Pomodoro.h"
 #import "SettingsWindowController.h"
 #import "LayoutEditorWindowController.h"
+#import "ModifierMonitor.h"
 #import "Agent.h"
 #import "AgentWindowController.h"
 #import "Log.h"
@@ -21,7 +22,7 @@
 static NSTouchBarItemIdentifier const kBarItemID = @"com.fun.pulsebar.main";
 static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
-@interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate, PBAgentRunner>
+@interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate, PBAgentRunner, PBModifierMonitorDelegate>
 @property (nonatomic, strong) NSTouchBar           *fullBar;
 @property (nonatomic, strong) NSCustomTouchBarItem  *barItem;
 @property (nonatomic, strong) BarView              *barView;
@@ -52,10 +53,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     NSInteger   _tick;
     BOOL        _spiOK;
     BOOL        _terminating;
-    id          _fnGlobalMon;
-    id          _fnLocalMon;
+    PBModifierMonitor *_modMonitor;
     NSMenuItem *_fnItem;
-    NSEventModifierFlags _prevFlags;
     BOOL        _agentStartedThisPress;
 }
 
@@ -414,29 +413,17 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 #pragma mark - modifier shortcuts (⌘ → recent mode · ⌥ → app overlay)
 
 - (void)enableModifiers {
-    if (!AXIsProcessTrusted())
-        AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)@{ (__bridge id)kAXTrustedCheckOptionPrompt: @YES });
-    if (_fnGlobalMon) return;
-    __weak AppDelegate *ws = self;
-    _fnGlobalMon = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^(NSEvent *e) { [ws modifierChanged:e.modifierFlags]; }];
-    _fnLocalMon  = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^NSEvent *(NSEvent *e) { [ws modifierChanged:e.modifierFlags]; return e; }];
-    PBLog(@"modifier shortcuts enabled (Accessibility %@)", AXIsProcessTrusted() ? @"granted" : @"PENDING — grant in System Settings");
+    if (!_modMonitor) { _modMonitor = [PBModifierMonitor new]; _modMonitor.delegate = self; }
+    BOOL trusted = [_modMonitor enable];
+    PBLog(@"modifier shortcuts enabled (Accessibility %@)", trusted ? @"granted" : @"PENDING — grant in System Settings");
 }
-- (void)disableModifiers {
-    if (_fnGlobalMon) { [NSEvent removeMonitor:_fnGlobalMon]; _fnGlobalMon = nil; }
-    if (_fnLocalMon)  { [NSEvent removeMonitor:_fnLocalMon];  _fnLocalMon = nil; }
-    [self hideAppOverlay];
-}
-// Debounced (~0.3s) so quick ⌘-/⌥-shortcuts don't trigger; only a deliberate hold does.
-- (void)modifierChanged:(NSEventModifierFlags)flags {
-    BOOL cmdNow = (flags & NSEventModifierFlagCommand) != 0, cmdWas = (_prevFlags & NSEventModifierFlagCommand) != 0;
-    BOOL optNow = (flags & NSEventModifierFlagOption)  != 0, optWas = (_prevFlags & NSEventModifierFlagOption)  != 0;
-    _prevFlags = flags;
-    if (optNow && !optWas) [self performSelector:@selector(showAppOverlay) withObject:nil afterDelay:0.30];
-    if (!optNow && optWas) { [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(showAppOverlay) object:nil]; [self hideAppOverlay]; }
-    if (cmdNow && !cmdWas) [self performSelector:@selector(switchRecent) withObject:nil afterDelay:0.30];
-    if (!cmdNow && cmdWas) [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(switchRecent) object:nil];
-}
+- (void)disableModifiers { [_modMonitor disable]; [self hideAppOverlay]; }
+
+// PBModifierMonitorDelegate — apply a deliberate ⌘/⌥ hold to the bar(s).
+- (void)modifierMonitorEngageOption    { [self showAppOverlay]; }
+- (void)modifierMonitorDisengageOption { [self hideAppOverlay]; }
+- (void)modifierMonitorEngageCommand   { [self switchRecent]; }
+
 - (void)switchRecent {
     NSInteger r = [self.barView recentMode];
     [self.barView setMode:r animated:self.barView.animateModeSwitch];
