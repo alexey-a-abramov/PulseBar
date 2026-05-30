@@ -92,6 +92,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     int         _nTiles;
     TileType    _activeSlider;
     BOOL        _sliding;
+    BOOL        _swiped;         // a swipe already fired this gesture
     CGFloat     _downX;          // for swipe detection
 }
 
@@ -455,35 +456,33 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
 
 - (void)mouseDown:(NSEvent *)e {
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
-    _downX = p.x; _activeSlider = -1; _sliding = NO;
+    _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO;
     Tile *t = [self tileAt:p];
     if (!t) return;
-    CGFloat iconW = 20;   // begin slider drags on press for responsiveness
+    CGFloat iconW = 20;
     if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
     else if (t->type == TVOL && p.x >= t->rect.origin.x + iconW) { _activeSlider = TVOL; _sliding = YES; [self.actionDelegate barSetVolume:[self sliderValueFor:t at:p]]; }
+    else { [self fireTap:t at:p]; }   // fire taps on PRESS — reliable on the Touch Bar
 }
 
 - (void)mouseDragged:(NSEvent *)e {
-    if (!_sliding || _activeSlider < 0) return;
     NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
-    for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
-        float v = [self sliderValueFor:&_tiles[i] at:p];
-        if (_activeSlider == TVOL) [self.actionDelegate barSetVolume:v]; else [self.actionDelegate barSetBrightness:v];
-        break;
+    if (_sliding && _activeSlider >= 0) {
+        for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
+            float v = [self sliderValueFor:&_tiles[i] at:p];
+            if (_activeSlider == TVOL) [self.actionDelegate barSetVolume:v]; else [self.actionDelegate barSetBrightness:v];
+            break;
+        }
+        return;
+    }
+    if (!_swiped && fabs(p.x - _downX) > 55) {   // horizontal swipe -> switch modes (wraps)
+        _swiped = YES;
+        NSInteger nm = (p.x - _downX) < 0 ? (_mode + 1) % BarModeCount : (_mode + BarModeCount - 1) % BarModeCount;
+        [self setMode:nm animated:YES]; [self.actionDelegate barDidChangeMode:nm];
     }
 }
 
-- (void)mouseUp:(NSEvent *)e {
-    NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
-    if (_sliding) { _sliding = NO; _activeSlider = -1; return; }
-    CGFloat dx = p.x - _downX;
-    if (fabs(dx) > 45) {   // horizontal swipe -> switch modes (wraps)
-        NSInteger nm = dx < 0 ? (_mode + 1) % BarModeCount : (_mode + BarModeCount - 1) % BarModeCount;
-        [self setMode:nm animated:YES]; [self.actionDelegate barDidChangeMode:nm];
-        return;
-    }
-    Tile *t = [self tileAt:p]; if (t) [self fireTap:t at:p];   // it was a tap
-}
+- (void)mouseUp:(NSEvent *)e { _sliding = NO; _activeSlider = -1; }
 
 - (void)fireTap:(Tile *)t at:(NSPoint)p {
     id<BarActionDelegate> d = self.actionDelegate;
