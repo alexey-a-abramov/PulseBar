@@ -29,6 +29,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barToggleCaffeine;
 - (void)barRunShortcut:(NSString *)action;
 - (void)barOpenSettings;
+- (void)barOpenAgent;
 - (void)barDidChangeMode:(NSInteger)mode;
 @end
 

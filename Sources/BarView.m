@@ -12,7 +12,7 @@ typedef NS_ENUM(NSInteger, TileType) {
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
     TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
     TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND,
-    TBATT, TCLOCK, TSETTINGS, TTAB
+    TAGENT, TBATT, TCLOCK, TSETTINGS, TTAB
 };
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
 
@@ -56,7 +56,7 @@ static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
     int n = 0;
     #define ADD(t, wt) do { out[n] = (t); w[n++] = (wt); } while (0)
     switch (m) {
-        case BarModeSystem:       ADD(TCPU,1.6); ADD(TMEM,1.05); ADD(TGPU,0.7); ADD(TNET,1.0); ADD(TDISK,1.0); ADD(TUPTIME,0.7); break;
+        case BarModeSystem:       ADD(TCPU,1.6); ADD(TMEM,1.05); ADD(TGPU,0.7); ADD(TNET,1.0); ADD(TDISK,1.0); ADD(TUPTIME,0.7); ADD(TBATT,0.7); break;
         case BarModeMedia:        ADD(TMEDIA,3.0); ADD(TVOL,1.2); break;
         case BarModeProductivity: ADD(TPOMO,1.5); ADD(TCAFFEINE,0.85); ADD(TSC_NOTE,0.8); ADD(TSC_REMIND,0.8); ADD(TSC_LOCK,0.8); break;
         case BarModeClassic:      ADD(TBRIGHT,1.3); ADD(TVOL,1.3); ADD(TMUTE,0.7); ADD(TMEDIA,1.8); break;
@@ -379,6 +379,16 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             [self t:[tf stringFromDate:now] rx:NSMaxX(r) - 6 y:11 sz:14 w:NSFontWeightBold c:[NSColor whiteColor]];
             break; }
         case TSETTINGS: [self symbol:@"gearshape.fill" in:r pt:15 color:[NSColor colorWithCalibratedWhite:0.85 alpha:1]]; break;
+        case TAGENT: {
+            CGFloat d = 21, cx = NSMidX(r), cy = r.size.height / 2;
+            NSRect orb = NSMakeRect(cx - d / 2, cy - d / 2, d, d);
+            NSGradient *g = [[NSGradient alloc] initWithColors:@[
+                [NSColor colorWithSRGBRed:0.38 green:0.42 blue:0.99 alpha:1],
+                [NSColor colorWithSRGBRed:0.78 green:0.36 blue:0.98 alpha:1],
+                [NSColor colorWithSRGBRed:0.99 green:0.38 blue:0.62 alpha:1]]];
+            [g drawInBezierPath:[NSBezierPath bezierPathWithOvalInRect:orb] angle:45];
+            [self symbol:@"sparkles" in:orb pt:11 color:[NSColor whiteColor]];
+            break; }
         case TTAB: break;
     }
 }
@@ -420,11 +430,11 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
     _nTiles = 0;
 
-    // right cluster: settings · clock · battery
+    // right cluster (present in every mode): agent · settings · clock
     CGFloat rx = W - 4;
+    NSRect rAg  = NSMakeRect(rx - 32, 0, 32, H); rx -= 34; [self drawTile:(Tile){TAGENT, rAg, 0}];    [self push:TAGENT rect:rAg arg:0];
     NSRect rSet = NSMakeRect(rx - 24, 0, 24, H); rx -= 26; [self drawTile:(Tile){TSETTINGS, rSet, 0}]; [self push:TSETTINGS rect:rSet arg:0];
-    NSRect rClk = NSMakeRect(rx - 86, 0, 86, H); rx -= 88; [self drawTile:(Tile){TCLOCK, rClk, 0}];  [self push:TCLOCK rect:rClk arg:0];
-    if (_battery.hasBattery) { NSRect rB = NSMakeRect(rx - 54, 0, 54, H); rx -= 56; [self drawTile:(Tile){TBATT, rB, 0}]; [self push:TBATT rect:rB arg:0]; }
+    NSRect rClk = NSMakeRect(rx - 86, 0, 86, H); rx -= 88; [self drawTile:(Tile){TCLOCK, rClk, 0}];    [self push:TCLOCK rect:rClk arg:0];
     CGFloat rightEdge = rx; [self divider:rightEdge];
 
     // left tabs (accordion)
@@ -516,6 +526,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         case TTAB:      [self setMode:t->arg animated:self.animateModeSwitch]; [d barDidChangeMode:t->arg]; break;
         case TCPU:      self.showCores = !self.showCores; [self setNeedsDisplay:YES]; break;
         case TSETTINGS: [d barOpenSettings]; break;
+        case TAGENT:    [d barOpenAgent]; break;
         case TPOMO:     [d barTogglePomodoro]; [self setNeedsDisplay:YES]; break;
         case TCAFFEINE: [d barToggleCaffeine]; break;
         case TSC_LOCK:    [d barRunShortcut:@"lock"]; break;

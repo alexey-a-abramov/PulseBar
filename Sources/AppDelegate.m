@@ -9,6 +9,8 @@
 #import "Controls.h"
 #import "Pomodoro.h"
 #import "SettingsWindowController.h"
+#import "Agent.h"
+#import "AgentWindowController.h"
 #import "Log.h"
 #import <dlfcn.h>
 #import <signal.h>
@@ -16,7 +18,7 @@
 static NSTouchBarItemIdentifier const kBarItemID = @"com.fun.pulsebar.main";
 static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
-@interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate>
+@interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate, PBAgentRunner>
 @property (nonatomic, strong) NSTouchBar           *fullBar;
 @property (nonatomic, strong) NSCustomTouchBarItem  *barItem;
 @property (nonatomic, strong) BarView              *barView;
@@ -32,6 +34,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 @property (nonatomic, strong) NSTask               *caffeine;
 @property (nonatomic) BOOL                          showTopProc;
 @property (nonatomic, strong) NSLayoutConstraint   *barWidth;
+@property (nonatomic, strong) PBAgent              *agent;
+@property (nonatomic, strong) AgentWindowController *agentWindow;
 @end
 
 @implementation AppDelegate {
@@ -306,6 +310,27 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)barMediaPrev            { PBLog(@"action media prev"); CtlMediaPrev(); }
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
 - (void)barOpenSettings         { [self showSettings]; }
+- (void)barOpenAgent {
+    if (!self.agent) { self.agent = [PBAgent new]; self.agent.runner = self; }
+    if (!self.agentWindow) self.agentWindow = [[AgentWindowController alloc] initWithAgent:self.agent];
+    [self.agentWindow present];
+}
+
+// PBAgentRunner — turn the model's chosen action into a real Mac action.
+- (NSString *)agentRunAction:(NSString *)action args:(NSDictionary *)args {
+    PBLog(@"agent action: %@ %@", action, args);
+    if ([action isEqualToString:@"open_app"])        { NSString *n = args[@"name"]; if (n) [self launch:@"/usr/bin/open" args:@[@"-a", n]]; return [NSString stringWithFormat:@"Opening %@.", n ?: @"app"]; }
+    if ([action isEqualToString:@"set_volume"])      { float p = [args[@"percent"] floatValue]; if (CtlGetMute()) CtlSetMute(NO); CtlSetVolume(p / 100.0f); return [NSString stringWithFormat:@"Volume set to %.0f%%.", p]; }
+    if ([action isEqualToString:@"set_brightness"])  { float p = [args[@"percent"] floatValue]; CtlSetBrightness(p / 100.0f); return [NSString stringWithFormat:@"Brightness set to %.0f%%.", p]; }
+    if ([action isEqualToString:@"media"])           { NSString *cmd = args[@"cmd"]; if ([cmd isEqualToString:@"next"]) CtlMediaNext(); else if ([cmd isEqualToString:@"prev"]) CtlMediaPrev(); else [self barMediaPlayPause]; return @"Done."; }
+    if ([action isEqualToString:@"lock"])            { [self barRunShortcut:@"lock"]; return @"Locking the screen."; }
+    if ([action isEqualToString:@"sleep_display"])   { [self barRunShortcut:@"displaysleep"]; return @"Putting the display to sleep."; }
+    if ([action isEqualToString:@"dark_mode"])       { [self barRunShortcut:@"darkmode"]; return @"Toggled dark mode."; }
+    if ([action isEqualToString:@"mission_control"]) { [self barRunShortcut:@"missioncontrol"]; return @"Opening Mission Control."; }
+    if ([action isEqualToString:@"run_shortcut"])    { NSString *n = args[@"name"]; if (n) [self launch:@"/usr/bin/shortcuts" args:@[@"run", n]]; return [NSString stringWithFormat:@"Running shortcut “%@”.", n ?: @""]; }
+    return nil;
+}
+
 - (void)barDidChangeMode:(NSInteger)mode {
     [self.barView setMode:mode animated:self.barView.animateModeSwitch];        // touch bar: instant
     if (self.mirrorBar) [self.mirrorBar setMode:mode animated:self.mirrorBar.animateModeSwitch]; // mirror: animated
