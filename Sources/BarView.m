@@ -52,15 +52,39 @@ static NSString *modeLabel(NSInteger m) {
     }
     return @"";
 }
-static int tilesForMode(NSInteger m, TileType *out, CGFloat *w) {
+// Layout spec for one tile in a mode's content area.
+//   weight — share of leftover width once every visible tile has its minW.
+//   prio   — higher survives longer; lowest-prio tiles are hidden first when
+//            the content area can't fit everyone's minW.
+//   minW   — narrowest width at which the tile is still legible.
+// Array order is the on-screen left→right order; prio is independent of it.
+typedef struct { TileType type; CGFloat weight; int prio; CGFloat minW; } TileDef;
+
+static int tilesForMode(NSInteger m, TileDef *out) {
     int n = 0;
-    #define ADD(t, wt) do { out[n] = (t); w[n++] = (wt); } while (0)
+    #define ADD(t, wt, pr, mn) do { out[n++] = (TileDef){(t), (wt), (pr), (mn)}; } while (0)
     switch (m) {
-        case BarModeSystem:       ADD(TCPU,1.6); ADD(TMEM,1.05); ADD(TGPU,0.7); ADD(TNET,1.0); ADD(TDISK,1.0); ADD(TUPTIME,0.7); ADD(TBATT,0.7); break;
-        case BarModeMedia:        ADD(TMEDIA,3.0); ADD(TVOL,1.2); break;
-        case BarModeProductivity: ADD(TPOMO,1.5); ADD(TCAFFEINE,0.85); ADD(TSC_NOTE,0.8); ADD(TSC_REMIND,0.8); ADD(TSC_LOCK,0.8); break;
-        case BarModeClassic:      ADD(TBRIGHT,1.3); ADD(TVOL,1.3); ADD(TMUTE,0.7); ADD(TMEDIA,1.8); break;
-        case BarModeShortcuts:    ADD(TSC_LOCK,1); ADD(TSC_SLEEP,1); ADD(TSC_SHOT,1); ADD(TSC_DARK,1); ADD(TSC_MISSION,1); ADD(TSC_LAUNCH,1); ADD(TSC_ACTIVITY,1); ADD(TCAFFEINE,1); break;
+        case BarModeSystem:
+            ADD(TCPU,    1.6, 100, 64);  ADD(TMEM,   1.05, 90, 56);  ADD(TGPU,   0.7, 45, 44);
+            ADD(TNET,    1.0,  70, 60);  ADD(TDISK,  1.0,  60, 56);  ADD(TUPTIME,0.7, 30, 48);
+            ADD(TBATT,   0.7,  80, 44);
+            break;
+        case BarModeMedia:
+            ADD(TMEDIA,  3.0, 100, 140); ADD(TVOL,   1.2,  80, 90);
+            break;
+        case BarModeProductivity:
+            ADD(TPOMO,   1.5, 100, 80);  ADD(TCAFFEINE, 0.85, 80, 52);
+            ADD(TSC_NOTE,0.8,  60, 46);  ADD(TSC_REMIND,0.8,  50, 46);  ADD(TSC_LOCK, 0.8, 70, 46);
+            break;
+        case BarModeClassic:
+            ADD(TBRIGHT, 1.3,  90, 90);  ADD(TVOL,   1.3, 100, 90);
+            ADD(TMUTE,   0.7,  70, 40);  ADD(TMEDIA, 1.8,  80, 120);
+            break;
+        case BarModeShortcuts:
+            ADD(TSC_LOCK,1, 100, 44); ADD(TSC_SLEEP,   1, 95, 44); ADD(TSC_SHOT,  1, 90, 44);
+            ADD(TSC_DARK,1,  85, 44); ADD(TSC_MISSION, 1, 80, 44); ADD(TSC_LAUNCH,1, 75, 44);
+            ADD(TSC_ACTIVITY,1, 70, 44); ADD(TCAFFEINE, 1, 65, 44);
+            break;
     }
     #undef ADD
     return n;
@@ -402,15 +426,37 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 - (void)push:(TileType)type rect:(NSRect)r arg:(NSInteger)arg { if (_nTiles < 40) _tiles[_nTiles++] = (Tile){type, r, arg}; }
 
 - (void)modeContent:(NSInteger)mode in:(NSRect)area draw:(BOOL)draw record:(BOOL)record {
-    TileType types[16]; CGFloat wts[16];
-    int n = tilesForMode(mode, types, wts);
-    CGFloat sum = 0; for (int i = 0; i < n; i++) sum += wts[i];
-    CGFloat pad = 4, avail = area.size.width - pad * 2, x = area.origin.x + pad;
+    TileDef defs[16];
+    int n = tilesForMode(mode, defs);
+    if (n <= 0) return;
+    CGFloat pad = 4, avail = area.size.width - pad * 2;
+
+    // Size-aware visibility: hide the lowest-priority tiles until everyone
+    // who's left fits at their minW. At least one tile always survives.
+    BOOL vis[16]; int nvis = n; CGFloat needed = 0;
+    for (int i = 0; i < n; i++) { vis[i] = YES; needed += defs[i].minW; }
+    while (needed > avail && nvis > 1) {
+        int worst = -1;
+        for (int i = 0; i < n; i++) if (vis[i] && (worst < 0 || defs[i].prio < defs[worst].prio)) worst = i;
+        if (worst < 0) break;
+        vis[worst] = NO; nvis--; needed -= defs[worst].minW;
+    }
+
+    // Give each visible tile its minW, then split the leftover by weight so
+    // small tiles aren't starved and big ones still take the lion's share.
+    CGFloat sumMin = 0, sumW = 0;
+    for (int i = 0; i < n; i++) if (vis[i]) { sumMin += defs[i].minW; sumW += defs[i].weight; }
+    if (sumW <= 0) sumW = 1;
+    CGFloat extra = MAX(0, avail - sumMin), x = area.origin.x + pad;
+    int drawn = 0;
     for (int i = 0; i < n; i++) {
-        CGFloat tw = avail * wts[i] / sum; NSRect r = NSMakeRect(x, 0, tw, area.size.height);
-        if (draw) [self drawTile:(Tile){types[i], r, 0}];
-        if (record) [self push:types[i] rect:r arg:0];
-        x += tw; if (draw && i < n - 1) [self divider:x];
+        if (!vis[i]) continue;
+        CGFloat tw = defs[i].minW + extra * defs[i].weight / sumW;
+        NSRect r = NSMakeRect(x, 0, tw, area.size.height);
+        if (draw) [self drawTile:(Tile){defs[i].type, r, 0}];
+        if (record) [self push:defs[i].type rect:r arg:0];
+        x += tw; drawn++;
+        if (draw && drawn < nvis) [self divider:x];
     }
 }
 
