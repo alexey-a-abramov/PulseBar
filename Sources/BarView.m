@@ -264,6 +264,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     double      _anim;            // 1 = settled
     CGFloat     _tabW[BarModeCount];
     NSTimer    *_animTimer;
+    BOOL        _clockCompact;    // narrow bar → clock shows time only (set in drawRect)
 
     Tile        _tiles[40];
     int         _nTiles;
@@ -427,6 +428,8 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 
 - (void)drawTile:(Tile)tile {
     NSRect r = tile.rect;
+    [NSGraphicsContext saveGraphicsState];
+    NSRectClip(r);   // a squeezed tile must never spill into its neighbours or the right cluster
     switch (tile.type) {
         case TCPU: {
             if (self.showCores && _coreCount > 0) {
@@ -445,8 +448,12 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             break; }
         case TMEM: {
             [self label:@"MEM" in:r];
-            if (_mem.swapUsedBytes > 0) [self t:[NSString stringWithFormat:@"swap %.1fG", toGB(_mem.swapUsedBytes)]
-                                            at:NSMakePoint(r.origin.x + 34, 3) sz:6.5 w:NSFontWeightBold c:[NSColor colorWithSRGBRed:1 green:0.60 blue:0.20 alpha:1]];
+            // "swap NG" only when the full label fits before the right-aligned % (else dropped).
+            CGFloat swapX = r.origin.x + 34, swapMaxW = (NSMaxX(r) - 6 - 32) - swapX;
+            NSString *swapStr = [NSString stringWithFormat:@"swap %.0fG", toGB(_mem.swapUsedBytes)];
+            NSDictionary *swA = @{ NSFontAttributeName:[NSFont monospacedSystemFontOfSize:6.5 weight:NSFontWeightBold] };
+            if (_mem.swapUsedBytes > 0 && [swapStr sizeWithAttributes:swA].width <= swapMaxW)
+                [self t:swapStr at:NSMakePoint(swapX, 3) sz:6.5 w:NSFontWeightBold c:[NSColor colorWithSRGBRed:1 green:0.60 blue:0.20 alpha:1]];
             [self t:[NSString stringWithFormat:@"%.0f%%", _mem.usedPct] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self load:_mem.usedPct]];
             CGFloat bx = r.origin.x + 6, bw = r.size.width - 12, by = 17, bh = 8;
             [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:4 yRadius:4] fill];
@@ -550,11 +557,17 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             if (_battery.charging) [self symbol:@"bolt.fill" in:NSMakeRect(bx, by, bw, bh) pt:8 color:[NSColor whiteColor]];
             break; }
         case TCLOCK: {
-            static NSDateFormatter *tf = nil, *df = nil;
-            if (!tf) { tf = [NSDateFormatter new]; tf.dateFormat = @"HH:mm:ss"; df = [NSDateFormatter new]; df.dateFormat = @"EEE d MMM"; }
+            static NSDateFormatter *tf = nil, *tfShort = nil, *df = nil;
+            if (!tf) { tf = [NSDateFormatter new]; tf.dateFormat = @"HH:mm:ss";
+                       tfShort = [NSDateFormatter new]; tfShort.dateFormat = @"HH:mm";
+                       df = [NSDateFormatter new]; df.dateFormat = @"EEE d MMM"; }
             NSDate *now = [NSDate date];
-            [self t:[df stringFromDate:now] rx:NSMaxX(r) - 6 y:2 sz:7.5 w:NSFontWeightMedium c:[self dim]];
-            [self t:[tf stringFromDate:now] rx:NSMaxX(r) - 6 y:11 sz:14 w:NSFontWeightBold c:[NSColor whiteColor]];
+            if (_clockCompact) {
+                [self t:[tfShort stringFromDate:now] rx:NSMaxX(r) - 6 y:9 sz:13 w:NSFontWeightBold c:[NSColor whiteColor]];
+            } else {
+                [self t:[df stringFromDate:now] rx:NSMaxX(r) - 6 y:2 sz:7.5 w:NSFontWeightMedium c:[self dim]];
+                [self t:[tf stringFromDate:now] rx:NSMaxX(r) - 6 y:11 sz:14 w:NSFontWeightBold c:[NSColor whiteColor]];
+            }
             break; }
         case TSETTINGS: [self symbol:@"gearshape.fill" in:r pt:15 color:[NSColor colorWithCalibratedWhite:0.85 alpha:1]]; break;
         case TAGENT: {
@@ -569,6 +582,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             break; }
         case TFKEY: case TAPP_HIDE: case TAPP_QUIT: case TTAB: break;   // drawn inline by overlays
     }
+    [NSGraphicsContext restoreGraphicsState];
 }
 
 #pragma mark - layout
@@ -658,11 +672,15 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     if (self.fnMode)     { [self drawFnKeys:b];     return; }
     [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
 
-    // right cluster (present in every mode): … agent · settings · clock(edge)
+    // Right cluster, reserved from the edge so the agent orb is NEVER dropped:
+    // clock (collapses date→time→hidden) · settings · agent. Width-aware so the
+    // whole strip adapts to the real Touch Bar size.
     CGFloat rx = W - kClusterPad;
-    NSRect rClk = NSMakeRect(rx - kClockW, 0, kClockW, H); rx -= kClockW + kClusterGap; [self drawTile:(Tile){TCLOCK, rClk, 0}];    [self push:TCLOCK rect:rClk arg:0];
-    NSRect rSet = NSMakeRect(rx - kSettingsW, 0, kSettingsW, H); rx -= kSettingsW + kClusterGap; [self drawTile:(Tile){TSETTINGS, rSet, 0}]; [self push:TSETTINGS rect:rSet arg:0];
-    NSRect rAg  = NSMakeRect(rx - kAgentW, 0, kAgentW, H); rx -= kAgentW + kClusterGap; [self drawTile:(Tile){TAGENT, rAg, 0}];    [self push:TAGENT rect:rAg arg:0];   // moved left of clock/settings
+    CGFloat clockW = (W >= 900) ? kClockW : (W >= 680 ? 52 : 0);
+    _clockCompact = (clockW > 0 && clockW < kClockW);
+    if (clockW > 0) { NSRect rClk = NSMakeRect(rx - clockW, 0, clockW, H); rx -= clockW + kClusterGap; [self drawTile:(Tile){TCLOCK, rClk, 0}]; [self push:TCLOCK rect:rClk arg:0]; }
+    if (W >= 560)   { NSRect rSet = NSMakeRect(rx - kSettingsW, 0, kSettingsW, H); rx -= kSettingsW + kClusterGap; [self drawTile:(Tile){TSETTINGS, rSet, 0}]; [self push:TSETTINGS rect:rSet arg:0]; }
+    NSRect rAg = NSMakeRect(rx - kAgentW, 0, kAgentW, H); rx -= kAgentW + kClusterGap; [self drawTile:(Tile){TAGENT, rAg, 0}]; [self push:TAGENT rect:rAg arg:0];
     CGFloat rightEdge = rx; [self divider:rightEdge];
 
     // left tabs (accordion)
