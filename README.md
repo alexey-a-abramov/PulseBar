@@ -102,6 +102,8 @@ Sources/
   Stats.m                   cpu/per-core/mem/net/battery/gpu/disk/top-process
   Controls.m                volume·mute (CoreAudio) · brightness (DisplayServices) · media (MediaRemote)
   Pomodoro.m                work/break timer model
+  TouchBarPresenter.m       Touch Bar SPI: present/dismiss + reversible full-bar takeover
+  MirrorController.m        desktop mirror panel (floating, clickable copy)
   ModifierMonitor.m         debounced ⌘/⌥ hold detection
   AgentCoordinator.m        agent + chat window + push-to-talk + action dispatch
   Agent.m · AgentWindowController.m   Ollama (Gemma) client · chat/voice window

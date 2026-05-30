@@ -58,11 +58,11 @@ SwiftPM — just `clang` over `Sources/*.m`.
 ```
 Sources/
   main.m                     accessory NSApplication (no Dock icon)
-  AppDelegate.m              the composition root: presents the bar (SPI), 1 Hz
-                             sampling, action handlers, full-bar takeover,
-                             LaunchAgent, sleep/wake pause, desktop mirror,
-                             settings. Delegates ⌘/⌥ to ModifierMonitor and the
-                             agent to AgentCoordinator.
+  AppDelegate.m              the composition root: 1 Hz sampling, action
+                             handlers, LaunchAgent, sleep/wake pause, settings.
+                             Delegates the Touch Bar SPI to TouchBarPresenter,
+                             the mirror to MirrorController, ⌘/⌥ to
+                             ModifierMonitor, and the agent to AgentCoordinator.
   BarView.m                  all rendering + hit-testing. Modes, accordion tabs,
                              tiles, sliders, swipe, size-aware priority layout.
                              (Drawn in a flipped view.)
@@ -71,6 +71,8 @@ Sources/
   Controls.m                 volume·mute (CoreAudio) · brightness (DisplayServices)
                              · media now-playing+transport+scrubber (MediaRemote)
   Pomodoro.m                 work/break timer model
+  TouchBarPresenter.m        Touch Bar SPI: present/dismiss + reversible takeover
+  MirrorController.m         desktop mirror panel (floating, clickable copy)
   ModifierMonitor.m          debounced ⌘/⌥ hold detection (NSEvent + Accessibility)
   AgentCoordinator.m         PBAgent + chat window + push-to-talk + action dispatch
   Agent.m                    Ollama (Gemma) client; JSON tool-calling protocol
