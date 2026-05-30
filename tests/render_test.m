@@ -50,5 +50,19 @@ int main(void) { @autoreleasepool {
     [NSGraphicsContext restoreGraphicsState];
     [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:@"/tmp/pulsebar_modes.png" atomically:YES];
     printf("wrote /tmp/pulsebar_modes.png (%dx%d, %d modes)\n", pw, ph, rows);
+
+    // Fn overlay (F1–F12)
+    [v setMode:BarModeSystem animated:NO]; v.fnMode = YES;
+    NSImage *fn = [[NSImage alloc] initWithData:[v dataWithPDFInsideRect:v.bounds]];
+    int fw = (int)(W * S), fh = (int)(H * S);
+    NSBitmapImageRep *fr = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:fw pixelsHigh:fh
+        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+    NSGraphicsContext *fgc = [NSGraphicsContext graphicsContextWithBitmapImageRep:fr];
+    [NSGraphicsContext saveGraphicsState]; [NSGraphicsContext setCurrentContext:fgc];
+    [[NSColor blackColor] setFill]; NSRectFill(NSMakeRect(0, 0, fw, fh));
+    [fn drawInRect:NSMakeRect(0, 0, fw, fh) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
+    [NSGraphicsContext restoreGraphicsState];
+    [[fr representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:@"/tmp/pulsebar_fn.png" atomically:YES];
+    printf("wrote /tmp/pulsebar_fn.png\n");
     return 0;
 }}

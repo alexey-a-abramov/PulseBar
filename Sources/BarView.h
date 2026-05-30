@@ -31,6 +31,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barOpenSettings;
 - (void)barOpenAgent;
 - (void)barDidChangeMode:(NSInteger)mode;
+- (void)barSendFunctionKey:(NSInteger)n;   // n = 1..12
 @end
 
 @interface BarView : NSView
@@ -40,6 +41,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic) BOOL showCores;          // CPU tile: sparkline vs per-core
 @property (nonatomic) BOOL caffeinated;        // caffeine toggle state
 @property (nonatomic) BOOL animateModeSwitch;  // NO on the live Touch Bar (DFR), YES on desktop
+@property (nonatomic) BOOL fnMode;             // when YES, show F1–F12 instead of the normal bar
 @property (nonatomic) double uptime;           // seconds since boot (System mode)
 @property (nonatomic, readonly) NSInteger mode;
 

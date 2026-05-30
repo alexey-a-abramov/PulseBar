@@ -12,7 +12,7 @@ typedef NS_ENUM(NSInteger, TileType) {
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
     TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
     TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND,
-    TAGENT, TBATT, TCLOCK, TSETTINGS, TTAB
+    TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TTAB
 };
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
 
@@ -389,7 +389,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             [g drawInBezierPath:[NSBezierPath bezierPathWithOvalInRect:orb] angle:45];
             [self symbol:@"sparkles" in:orb pt:11 color:[NSColor whiteColor]];
             break; }
-        case TTAB: break;
+        case TFKEY: case TTAB: break;   // TFKEY is drawn inline by drawFnKeys
     }
 }
 
@@ -424,11 +424,26 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     }
 }
 
+- (void)drawFnKeys:(NSRect)b {
+    CGFloat W = b.size.width, H = b.size.height, pad = 4, gap = 3;
+    int n = 12;
+    CGFloat bw = (W - pad * 2 - gap * (n - 1)) / n, x = pad;
+    for (int i = 1; i <= n; i++) {
+        NSRect r = NSMakeRect(x, 2, bw, H - 4);
+        [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:r xRadius:5 yRadius:5] fill];
+        [self tc:[NSString stringWithFormat:@"F%d", i] cx:NSMidX(r) y:H / 2 - 7 sz:12 w:NSFontWeightSemibold c:[NSColor whiteColor]];
+        [self push:TFKEY rect:r arg:i];
+        x += bw + gap;
+    }
+}
+
 - (void)drawRect:(NSRect)dirty {
     NSRect b = self.bounds; CGFloat W = b.size.width, H = b.size.height;
     [[NSColor colorWithCalibratedWhite:0.035 alpha:1] setFill]; NSRectFill(b);
-    [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
     _nTiles = 0;
+    if (self.fnMode) { [self drawFnKeys:b]; return; }   // Fn held -> F1..F12
+    [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
 
     // right cluster (present in every mode): agent · settings · clock
     CGFloat rx = W - 4;
@@ -527,6 +542,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         case TCPU:      self.showCores = !self.showCores; [self setNeedsDisplay:YES]; break;
         case TSETTINGS: [d barOpenSettings]; break;
         case TAGENT:    [d barOpenAgent]; break;
+        case TFKEY:     [d barSendFunctionKey:t->arg]; break;
         case TPOMO:     [d barTogglePomodoro]; [self setNeedsDisplay:YES]; break;
         case TCAFFEINE: [d barToggleCaffeine]; break;
         case TSC_LOCK:    [d barRunShortcut:@"lock"]; break;

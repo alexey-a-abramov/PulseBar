@@ -14,6 +14,7 @@
 #import "Log.h"
 #import <dlfcn.h>
 #import <signal.h>
+#import <ApplicationServices/ApplicationServices.h>
 
 static NSTouchBarItemIdentifier const kBarItemID = @"com.fun.pulsebar.main";
 static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
@@ -48,6 +49,9 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     NSInteger   _tick;
     BOOL        _spiOK;
     BOOL        _terminating;
+    id          _fnGlobalMon;
+    id          _fnLocalMon;
+    NSMenuItem *_fnItem;
 }
 
 #pragma mark - lifecycle
@@ -76,6 +80,10 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
         if ([ud boolForKey:@"fullBar"]) [self applyFullBar:YES];                 // hide Control Strip
         if (![ud objectForKey:@"mirror"]) [ud setBool:YES forKey:@"mirror"];     // show desktop mirror
         if ([ud boolForKey:@"mirror"]) [self showMirror];
+        if (![ud objectForKey:@"fnKeys"]) [ud setBool:YES forKey:@"fnKeys"];     // F1–F12 on Fn
+        BOOL fn = [ud boolForKey:@"fnKeys"];
+        _fnItem.state = fn ? NSControlStateValueOn : NSControlStateValueOff;
+        if (fn) [self enableFnKeys];
     }
 
     [self registerSleepWake];
@@ -168,6 +176,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [menu addItemWithTitle:@"Re-attach to Touch Bar"  action:@selector(attachToTouchBar) keyEquivalent:@"r"];
     [menu addItemWithTitle:@"Toggle CPU-core view"    action:@selector(toggleCores)     keyEquivalent:@"c"];
     [menu addItemWithTitle:@"Open Log"                action:@selector(openLog)         keyEquivalent:@"l"];
+    _fnItem = [menu addItemWithTitle:@"Function Keys on Fn (F1–F12)" action:@selector(toggleFnKeys) keyEquivalent:@""];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Quit PulseBar" action:@selector(quit) keyEquivalent:@"q"];
     for (NSMenuItem *it in menu.itemArray) if (it.action) it.target = self;
@@ -378,6 +387,48 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
 - (void)toggleCores  { self.barView.showCores = !self.barView.showCores; [self.barView setNeedsDisplay:YES]; }
 - (void)openLog { [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:PBLogFile()]]; }
+
+#pragma mark - function keys (hold Fn -> F1..F12)
+
+- (void)enableFnKeys {
+    if (!AXIsProcessTrusted())
+        AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)@{ (__bridge id)kAXTrustedCheckOptionPrompt: @YES });
+    if (_fnGlobalMon) return;
+    __weak AppDelegate *ws = self;
+    _fnGlobalMon = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^(NSEvent *e) {
+        [ws setFnActive:(e.modifierFlags & NSEventModifierFlagFunction) != 0];
+    }];
+    _fnLocalMon = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^NSEvent *(NSEvent *e) {
+        [ws setFnActive:(e.modifierFlags & NSEventModifierFlagFunction) != 0]; return e;
+    }];
+    PBLog(@"Fn keys enabled (Accessibility %@)", AXIsProcessTrusted() ? @"granted" : @"PENDING — grant in System Settings");
+}
+- (void)disableFnKeys {
+    if (_fnGlobalMon) { [NSEvent removeMonitor:_fnGlobalMon]; _fnGlobalMon = nil; }
+    if (_fnLocalMon)  { [NSEvent removeMonitor:_fnLocalMon];  _fnLocalMon = nil; }
+    [self setFnActive:NO];
+}
+- (void)setFnActive:(BOOL)on {
+    if (self.barView.fnMode == on) return;
+    self.barView.fnMode = on; self.mirrorBar.fnMode = on;
+    [self.barView setNeedsDisplay:YES]; [self.mirrorBar setNeedsDisplay:YES];
+}
+- (void)toggleFnKeys {
+    BOOL on = ![NSUserDefaults.standardUserDefaults boolForKey:@"fnKeys"];
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:@"fnKeys"];
+    _fnItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
+    if (on) [self enableFnKeys]; else [self disableFnKeys];
+}
+- (void)barSendFunctionKey:(NSInteger)n {
+    static const CGKeyCode codes[12] = { 0x7A, 0x78, 0x63, 0x76, 0x60, 0x61, 0x62, 0x64, 0x65, 0x6D, 0x67, 0x6F };
+    if (n < 1 || n > 12) return;
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventRef down = CGEventCreateKeyboardEvent(src, codes[n - 1], true);
+    CGEventRef up   = CGEventCreateKeyboardEvent(src, codes[n - 1], false);
+    CGEventPost(kCGHIDEventTap, down); CGEventPost(kCGHIDEventTap, up);
+    if (down) CFRelease(down); if (up) CFRelease(up); if (src) CFRelease(src);
+    PBLog(@"sent F%ld", (long)n);
+}
 - (void)showSettings {
     if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
     [self.settings present];
