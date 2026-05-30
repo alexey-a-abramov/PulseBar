@@ -12,8 +12,7 @@
 #import "SettingsWindowController.h"
 #import "LayoutEditorWindowController.h"
 #import "ModifierMonitor.h"
-#import "Agent.h"
-#import "AgentWindowController.h"
+#import "AgentCoordinator.h"
 #import "Log.h"
 #import <dlfcn.h>
 #import <signal.h>
@@ -22,7 +21,7 @@
 static NSTouchBarItemIdentifier const kBarItemID = @"com.fun.pulsebar.main";
 static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
-@interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate, PBAgentRunner, PBModifierMonitorDelegate>
+@interface AppDelegate () <BarActionDelegate, SettingsDelegate, NSWindowDelegate, PBAgentHost, PBModifierMonitorDelegate>
 @property (nonatomic, strong) NSTouchBar           *fullBar;
 @property (nonatomic, strong) NSCustomTouchBarItem  *barItem;
 @property (nonatomic, strong) BarView              *barView;
@@ -39,8 +38,6 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 @property (nonatomic, strong) NSTask               *caffeine;
 @property (nonatomic) BOOL                          showTopProc;
 @property (nonatomic, strong) NSLayoutConstraint   *barWidth;
-@property (nonatomic, strong) PBAgent              *agent;
-@property (nonatomic, strong) AgentWindowController *agentWindow;
 @end
 
 @implementation AppDelegate {
@@ -54,8 +51,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     BOOL        _spiOK;
     BOOL        _terminating;
     PBModifierMonitor *_modMonitor;
+    PBAgentCoordinator *_agentCoord;
     NSMenuItem *_fnItem;
-    BOOL        _agentStartedThisPress;
 }
 
 #pragma mark - lifecycle
@@ -332,37 +329,17 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)barMediaPrev            { PBLog(@"action media prev"); CtlMediaPrev(); }
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
 - (void)barOpenSettings         { [self showSettings]; }
-- (void)barOpenAgent {
-    if (!self.agent) { self.agent = [PBAgent new]; self.agent.runner = self; }
-    if (!self.agentWindow) self.agentWindow = [[AgentWindowController alloc] initWithAgent:self.agent];
-    [self.agentWindow present];
+- (PBAgentCoordinator *)agentCoord {
+    if (!_agentCoord) _agentCoord = [[PBAgentCoordinator alloc] initWithHost:self];
+    return _agentCoord;
 }
-// Agent orb press → push-to-talk. Tap toggles; hold = walkie-talkie (release sends).
-- (void)barAgentDown {
-    if (!self.agent) { self.agent = [PBAgent new]; self.agent.runner = self; }
-    if (!self.agentWindow) self.agentWindow = [[AgentWindowController alloc] initWithAgent:self.agent];
-    if (self.agentWindow.listening) { _agentStartedThisPress = NO; [self.agentWindow stopAndSend]; }   // already listening → stop
-    else { _agentStartedThisPress = YES; [self.agentWindow presentAndListen]; }                          // idle → open + record
-}
-- (void)barAgentUp:(BOOL)wasHold {
-    if (_agentStartedThisPress && wasHold && self.agentWindow.listening) [self.agentWindow stopAndSend];  // walkie-talkie release
-    _agentStartedThisPress = NO;
-}
+- (void)barOpenAgent       { [[self agentCoord] openAgent]; }
+- (void)barAgentDown       { [[self agentCoord] agentDown]; }      // push-to-talk: start/stop
+- (void)barAgentUp:(BOOL)wasHold { [[self agentCoord] agentUp:wasHold]; }  // walkie-talkie release
 
-// PBAgentRunner — turn the model's chosen action into a real Mac action.
-- (NSString *)agentRunAction:(NSString *)action args:(NSDictionary *)args {
-    PBLog(@"agent action: %@ %@", action, args);
-    if ([action isEqualToString:@"open_app"])        { NSString *n = args[@"name"]; if (n) [self launch:@"/usr/bin/open" args:@[@"-a", n]]; return [NSString stringWithFormat:@"Opening %@.", n ?: @"app"]; }
-    if ([action isEqualToString:@"set_volume"])      { float p = [args[@"percent"] floatValue]; if (CtlGetMute()) CtlSetMute(NO); CtlSetVolume(p / 100.0f); return [NSString stringWithFormat:@"Volume set to %.0f%%.", p]; }
-    if ([action isEqualToString:@"set_brightness"])  { float p = [args[@"percent"] floatValue]; CtlSetBrightness(p / 100.0f); return [NSString stringWithFormat:@"Brightness set to %.0f%%.", p]; }
-    if ([action isEqualToString:@"media"])           { NSString *cmd = args[@"cmd"]; if ([cmd isEqualToString:@"next"]) CtlMediaNext(); else if ([cmd isEqualToString:@"prev"] || [cmd isEqualToString:@"previous"]) CtlMediaPrev(); else [self barMediaPlayPause]; return @"Done."; }
-    if ([action isEqualToString:@"lock"])            { [self barRunShortcut:@"lock"]; return @"Locking the screen."; }
-    if ([action isEqualToString:@"sleep_display"])   { [self barRunShortcut:@"displaysleep"]; return @"Putting the display to sleep."; }
-    if ([action isEqualToString:@"dark_mode"])       { [self barRunShortcut:@"darkmode"]; return @"Toggled dark mode."; }
-    if ([action isEqualToString:@"mission_control"]) { [self barRunShortcut:@"missioncontrol"]; return @"Opening Mission Control."; }
-    if ([action isEqualToString:@"run_shortcut"])    { NSString *n = args[@"name"]; if (n) [self launch:@"/usr/bin/shortcuts" args:@[@"run", n]]; return [NSString stringWithFormat:@"Running shortcut “%@”.", n ?: @""]; }
-    return nil;
-}
+// PBAgentHost — system actions the coordinator delegates back to us.
+- (void)agentLaunch:(NSString *)path args:(NSArray<NSString *> *)args { [self launch:path args:args]; }
+- (void)agentRunShortcut:(NSString *)name { [self barRunShortcut:name]; }
 
 - (void)barDidChangeMode:(NSInteger)mode {
     [self.barView setMode:mode animated:self.barView.animateModeSwitch];        // touch bar: instant
