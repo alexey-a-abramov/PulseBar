@@ -105,8 +105,10 @@ Sources/
   TouchBarPresenter.m       Touch Bar SPI: present/dismiss + reversible full-bar takeover
   MirrorController.m        desktop mirror panel (floating, clickable copy)
   ModifierMonitor.m         debounced ⌘/⌥ hold detection
-  AgentCoordinator.m        agent + chat window + push-to-talk + action dispatch
-  Agent.m · AgentWindowController.m   Ollama (Gemma) client · chat/voice window
+  AgentCoordinator.m        agent + chat window + push-to-talk + safe action dispatch
+  Agent.m · AgentWindowController.m   intent resolver (fast-path → Gemma) · chat/voice window
+  VoiceCommands.m           closed command vocabulary + offline intent parser
+  AppIndex.m · Queries.m    fuzzy app launcher · read-only spoken status answers
   SettingsWindowController.m  desktop settings window
   LayoutEditorWindowController.m  size editor (per-tile size/priority/visibility)
   PBDefaults.m              NSUserDefaults key constants

@@ -74,8 +74,11 @@ Sources/
   TouchBarPresenter.m        Touch Bar SPI: present/dismiss + reversible takeover
   MirrorController.m         desktop mirror panel (floating, clickable copy)
   ModifierMonitor.m          debounced ⌘/⌥ hold detection (NSEvent + Accessibility)
-  AgentCoordinator.m         PBAgent + chat window + push-to-talk + action dispatch
-  Agent.m                    Ollama (Gemma) client; JSON tool-calling protocol
+  AgentCoordinator.m         PBAgent + chat window + push-to-talk + safe action dispatch
+  Agent.m                    intent resolver: deterministic fast-path → Gemma fallback
+  VoiceCommands.m            closed command vocabulary + offline intent parser
+  AppIndex.m                 fuzzy app-launcher index (scans /Applications etc.)
+  Queries.m                  read-only spoken status answers (battery/cpu/…)
   AgentWindowController.m    chat window: bubbles, quick chips, voice capture
   SettingsWindowController.m desktop settings window (full-bar, login, top-proc, pomodoro)
   LayoutEditorWindowController.m  size editor: per-tile size/priority/visibility + preview
@@ -90,6 +93,19 @@ Tile layout overrides from the size editor persist under
 builder and the packing logic via `+[BarView overrideKeyForMode:type:]` and
 `+[BarView visibleTileNamesForMode:contentWidth:]` (the latter is unit-tested in
 `tests/layout_test.m`).
+
+### Voice / agent commands (safe by construction)
+`PBVoiceCommands` defines a **closed, vetted action vocabulary** in five
+categories — Controls (volume/brightness/mute/media), Bar (mode, Pomodoro,
+caffeine, mirror, settings/editor, show·hide·resize a tile), System (lock,
+sleep display, dark mode, Mission Control — reversible only), Query (read-only
+status via `PBQueries`), and App (fuzzy launcher via `PBAppIndex`). `PBAgent.ask`
+parses deterministically first (instant, offline) and only falls back to Gemma,
+which is constrained to the SAME vocabulary and prompted from
+`+[PBVoiceCommands promptVocabulary]`; any action failing `+isKnownAction:` is
+refused. There is deliberately no destructive action (quit/delete/shutdown), so
+the agent declines such requests. New commands go in `PBVoiceCommands` (parse +
+vocabulary) and the dispatch switch in `AgentCoordinator -agentRunAction:args:`.
 
 ### How the "full Touch Bar regardless of focus" works
 Public `NSTouchBar` is focus-bound. PulseBar uses the same private SPI as
