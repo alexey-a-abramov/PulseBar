@@ -4,6 +4,7 @@
 //
 #import "AppDelegate.h"
 #import "PrivateAPI.h"
+#import "PBDefaults.h"
 #import "BarView.h"
 #import "Stats.h"
 #import "Controls.h"
@@ -67,26 +68,26 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     CtlMediaInit();
 
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    { NSString *mapp = [ud stringForKey:@"mediaApp"]; if (mapp.length) CtlSetMediaApp(mapp); }   // default Spotify
+    { NSString *mapp = [ud stringForKey:PBKeyMediaApp]; if (mapp.length) CtlSetMediaApp(mapp); }   // default Spotify
     self.pomo = [Pomodoro new];
-    self.pomo.workMinutes  = [ud objectForKey:@"work"]  ? [ud integerForKey:@"work"]  : 25;
-    self.pomo.breakMinutes = [ud objectForKey:@"break"] ? [ud integerForKey:@"break"] : 5;
+    self.pomo.workMinutes  = [ud objectForKey:PBKeyWork]  ? [ud integerForKey:PBKeyWork]  : 25;
+    self.pomo.breakMinutes = [ud objectForKey:PBKeyBreak] ? [ud integerForKey:PBKeyBreak] : 5;
     __weak AppDelegate *ws = self;
     self.pomo.onComplete = ^(BOOL wasWork) { [ws pomodoroFinished:wasWork]; };
-    self.showTopProc = [ud objectForKey:@"showTopProc"] ? [ud boolForKey:@"showTopProc"] : YES;
+    self.showTopProc = [ud objectForKey:PBKeyShowTopProc] ? [ud boolForKey:PBKeyShowTopProc] : YES;
 
     [self buildBars];
-    [self.barView setMode:[ud integerForKey:@"mode"] animated:NO];   // restore last mode
+    [self.barView setMode:[ud integerForKey:PBKeyMode] animated:NO];   // restore last mode
     [self buildStatusItem];
     [self attachToTouchBar];
 
     if (getenv("PULSEBAR_SELFQUIT") == NULL) {          // never change system settings under test
-        if (![ud objectForKey:@"fullBar"]) [ud setBool:YES forKey:@"fullBar"];  // full width by default
-        if ([ud boolForKey:@"fullBar"]) [self applyFullBar:YES];                 // hide Control Strip
-        if (![ud objectForKey:@"mirror"]) [ud setBool:YES forKey:@"mirror"];     // show desktop mirror
-        if ([ud boolForKey:@"mirror"]) [self showMirror];
-        if (![ud objectForKey:@"modifiers"]) [ud setBool:YES forKey:@"modifiers"];   // ⌘ recent · ⌥ app
-        BOOL mods = [ud boolForKey:@"modifiers"];
+        if (![ud objectForKey:PBKeyFullBar]) [ud setBool:YES forKey:PBKeyFullBar];  // full width by default
+        if ([ud boolForKey:PBKeyFullBar]) [self applyFullBar:YES];                 // hide Control Strip
+        if (![ud objectForKey:PBKeyMirror]) [ud setBool:YES forKey:PBKeyMirror];     // show desktop mirror
+        if ([ud boolForKey:PBKeyMirror]) [self showMirror];
+        if (![ud objectForKey:PBKeyModifiers]) [ud setBool:YES forKey:PBKeyModifiers];   // ⌘ recent · ⌥ app
+        BOOL mods = [ud boolForKey:PBKeyModifiers];
         _fnItem.state = mods ? NSControlStateValueOn : NSControlStateValueOff;
         if (mods) [self enableModifiers];
     }
@@ -141,7 +142,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
 - (void)buildBars {
     // Full Touch Bar is ~1085pt; the app region with Control Strip shown is ~1004pt.
-    BOOL full = [NSUserDefaults.standardUserDefaults boolForKey:@"fullBar"];
+    BOOL full = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar];
     self.barView = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, full ? 1085 : 1004, 30)];
     self.barView.translatesAutoresizingMaskIntoConstraints = NO;
     self.barWidth = [self.barView.widthAnchor constraintEqualToConstant:(full ? 1085 : 1004)];
@@ -235,13 +236,13 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     NSRect sf = [NSScreen mainScreen].visibleFrame, wf = self.mirrorPanel.frame;
     [self.mirrorPanel setFrameOrigin:NSMakePoint(sf.origin.x + (sf.size.width - wf.size.width) / 2, sf.origin.y + 36)];
     [self.mirrorPanel orderFront:nil];
-    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"mirror"];
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:PBKeyMirror];
 }
-- (void)hideMirror { [self.mirrorPanel orderOut:nil]; [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"mirror"]; }
+- (void)hideMirror { [self.mirrorPanel orderOut:nil]; [NSUserDefaults.standardUserDefaults setBool:NO forKey:PBKeyMirror]; }
 - (void)toggleMirror { (self.mirrorPanel.isVisible) ? [self hideMirror] : [self showMirror]; }
 - (void)windowWillClose:(NSNotification *)n {
     if (_terminating) return;   // don't persist "hidden" just because the app is quitting
-    if (n.object == self.mirrorPanel) [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"mirror"];
+    if (n.object == self.mirrorPanel) [NSUserDefaults.standardUserDefaults setBool:NO forKey:PBKeyMirror];
 }
 
 #pragma mark - Touch Bar attach / detach
@@ -270,8 +271,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     if ([TB respondsToSelector:@selector(dismissSystemModalTouchBar:)]) [NSTouchBar dismissSystemModalTouchBar:self.fullBar];
     if ([NSTouchBarItem respondsToSelector:@selector(removeSystemTrayItem:)]) [NSTouchBarItem removeSystemTrayItem:self.stripItem];
     // never leave the user stuck without a Control Strip
-    if ([NSUserDefaults.standardUserDefaults boolForKey:@"fullBar"]) {
-        [self writeTBMode:([NSUserDefaults.standardUserDefaults stringForKey:@"tbBackup"] ?: @"appWithControlStrip")];
+    if ([NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar]) {
+        [self writeTBMode:([NSUserDefaults.standardUserDefaults stringForKey:PBKeyTBBackup] ?: @"appWithControlStrip")];
         [self restartTB];
     }
 }
@@ -367,7 +368,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)barDidChangeMode:(NSInteger)mode {
     [self.barView setMode:mode animated:self.barView.animateModeSwitch];        // touch bar: instant
     if (self.mirrorBar) [self.mirrorBar setMode:mode animated:self.mirrorBar.animateModeSwitch]; // mirror: animated
-    [NSUserDefaults.standardUserDefaults setInteger:mode forKey:@"mode"];
+    [NSUserDefaults.standardUserDefaults setInteger:mode forKey:PBKeyMode];
 }
 
 - (void)barToggleCaffeine {
@@ -440,7 +441,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     NSInteger r = [self.barView recentMode];
     [self.barView setMode:r animated:self.barView.animateModeSwitch];
     [self.mirrorBar setMode:r animated:self.mirrorBar.animateModeSwitch];
-    [NSUserDefaults.standardUserDefaults setInteger:r forKey:@"mode"];
+    [NSUserDefaults.standardUserDefaults setInteger:r forKey:PBKeyMode];
 }
 - (void)showAppOverlay {
     NSRunningApplication *app = [NSWorkspace sharedWorkspace].frontmostApplication;
@@ -455,8 +456,8 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [self.barView setNeedsDisplay:YES]; [self.mirrorBar setNeedsDisplay:YES];
 }
 - (void)toggleModifiers {
-    BOOL on = ![NSUserDefaults.standardUserDefaults boolForKey:@"modifiers"];
-    [NSUserDefaults.standardUserDefaults setBool:on forKey:@"modifiers"];
+    BOOL on = ![NSUserDefaults.standardUserDefaults boolForKey:PBKeyModifiers];
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyModifiers];
     _fnItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
     if (on) [self enableModifiers]; else [self disableModifiers];
 }
@@ -479,7 +480,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
 #pragma mark - SettingsDelegate
 
-- (BOOL)settingsFullBarEnabled { return [NSUserDefaults.standardUserDefaults boolForKey:@"fullBar"]; }
+- (BOOL)settingsFullBarEnabled { return [NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar]; }
 - (void)settingsSetFullBar:(BOOL)on { [self applyFullBar:on]; }
 - (BOOL)settingsLoginEnabled { return [[NSFileManager defaultManager] fileExistsAtPath:[self agentPath]]; }
 - (void)settingsSetLogin:(BOOL)on { [self setLogin:on]; }
@@ -487,20 +488,20 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (NSInteger)settingsBreakMinutes { return self.pomo.breakMinutes; }
 - (void)settingsSetWork:(NSInteger)w breakMin:(NSInteger)b {
     self.pomo.workMinutes = w; self.pomo.breakMinutes = b;
-    [NSUserDefaults.standardUserDefaults setInteger:w forKey:@"work"];
-    [NSUserDefaults.standardUserDefaults setInteger:b forKey:@"break"];
+    [NSUserDefaults.standardUserDefaults setInteger:w forKey:PBKeyWork];
+    [NSUserDefaults.standardUserDefaults setInteger:b forKey:PBKeyBreak];
 }
 - (BOOL)settingsTopProcEnabled { return self.showTopProc; }
 - (void)settingsSetTopProc:(BOOL)on {
     self.showTopProc = on;
-    [NSUserDefaults.standardUserDefaults setBool:on forKey:@"showTopProc"];
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyShowTopProc];
 }
-- (NSString *)settingsMediaApp { NSString *a = [NSUserDefaults.standardUserDefaults stringForKey:@"mediaApp"]; return a.length ? a : @"Spotify"; }
+- (NSString *)settingsMediaApp { NSString *a = [NSUserDefaults.standardUserDefaults stringForKey:PBKeyMediaApp]; return a.length ? a : @"Spotify"; }
 - (void)settingsSetMediaApp:(NSString *)app {
     NSString *a = [app stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (!a.length) a = @"Spotify";
     CtlSetMediaApp(a);
-    [NSUserDefaults.standardUserDefaults setObject:a forKey:@"mediaApp"];
+    [NSUserDefaults.standardUserDefaults setObject:a forKey:PBKeyMediaApp];
 }
 - (void)settingsEditLayout { [self showLayoutEditor]; }
 - (void)settingsQuit { [self quit]; }
@@ -530,12 +531,12 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     if (on) {
         NSString *cur = [self readTBMode];
-        if (cur.length && ![cur isEqualToString:@"app"]) [ud setObject:cur forKey:@"tbBackup"];
+        if (cur.length && ![cur isEqualToString:@"app"]) [ud setObject:cur forKey:PBKeyTBBackup];
         [self writeTBMode:@"app"];
     } else {
-        [self writeTBMode:([ud stringForKey:@"tbBackup"] ?: @"appWithControlStrip")];
+        [self writeTBMode:([ud stringForKey:PBKeyTBBackup] ?: @"appWithControlStrip")];
     }
-    [ud setBool:on forKey:@"fullBar"];
+    [ud setBool:on forKey:PBKeyFullBar];
     self.barWidth.constant = on ? 1085 : 1004;   // fill the freed Control-Strip space
     [self restartTB];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.3 * NSEC_PER_SEC)),

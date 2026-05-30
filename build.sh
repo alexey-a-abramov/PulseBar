@@ -44,7 +44,7 @@ echo "==> SDK: $SDK"
 
 clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
   -Wall -Wno-deprecated-declarations \
-  "$SRC/Log.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" "$SRC/BarView.m" \
+  "$SRC/PBDefaults.m" "$SRC/Log.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" "$SRC/BarView.m" \
   "$SRC/Agent.m" "$SRC/AgentWindowController.m" \
   "$SRC/SettingsWindowController.m" "$SRC/LayoutEditorWindowController.m" \
   "$SRC/AppDelegate.m" "$SRC/main.m" \
