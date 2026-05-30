@@ -9,6 +9,15 @@
 
 NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
 
+// Right-cluster geometry (drawn in drawRect:): the fixed-width controls pinned
+// to the trailing edge — clock, settings gear, agent orb — plus the gap between
+// them and the trailing padding. Each step-offset is the control width + gap.
+static const CGFloat kClusterPad = 4;    // trailing padding before the cluster
+static const CGFloat kClockW     = 86;
+static const CGFloat kSettingsW  = 24;
+static const CGFloat kAgentW     = 32;
+static const CGFloat kClusterGap = 2;    // gap between adjacent cluster controls
+
 // NOTE: persisted layout overrides are keyed by tileToken()/modeToken(), not by
 // these ordinals, so reordering is safe — but keep tileToken() in sync.
 typedef NS_ENUM(NSInteger, TileType) {
@@ -598,10 +607,10 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
 
     // right cluster (present in every mode): … agent · settings · clock(edge)
-    CGFloat rx = W - 4;
-    NSRect rClk = NSMakeRect(rx - 86, 0, 86, H); rx -= 88; [self drawTile:(Tile){TCLOCK, rClk, 0}];    [self push:TCLOCK rect:rClk arg:0];
-    NSRect rSet = NSMakeRect(rx - 24, 0, 24, H); rx -= 26; [self drawTile:(Tile){TSETTINGS, rSet, 0}]; [self push:TSETTINGS rect:rSet arg:0];
-    NSRect rAg  = NSMakeRect(rx - 32, 0, 32, H); rx -= 34; [self drawTile:(Tile){TAGENT, rAg, 0}];    [self push:TAGENT rect:rAg arg:0];   // moved left of clock/settings
+    CGFloat rx = W - kClusterPad;
+    NSRect rClk = NSMakeRect(rx - kClockW, 0, kClockW, H); rx -= kClockW + kClusterGap; [self drawTile:(Tile){TCLOCK, rClk, 0}];    [self push:TCLOCK rect:rClk arg:0];
+    NSRect rSet = NSMakeRect(rx - kSettingsW, 0, kSettingsW, H); rx -= kSettingsW + kClusterGap; [self drawTile:(Tile){TSETTINGS, rSet, 0}]; [self push:TSETTINGS rect:rSet arg:0];
+    NSRect rAg  = NSMakeRect(rx - kAgentW, 0, kAgentW, H); rx -= kAgentW + kClusterGap; [self drawTile:(Tile){TAGENT, rAg, 0}];    [self push:TAGENT rect:rAg arg:0];   // moved left of clock/settings
     CGFloat rightEdge = rx; [self divider:rightEdge];
 
     // left tabs (accordion)
