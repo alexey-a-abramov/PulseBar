@@ -13,6 +13,7 @@
 #import "Pomodoro.h"
 #import "SettingsWindowController.h"
 #import "LayoutEditorWindowController.h"
+#import "CrashReporter.h"
 #import "ModifierMonitor.h"
 #import "AgentCoordinator.h"
 #import "Log.h"
@@ -48,6 +49,23 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
     PBLogInit();
+    // Surface a crash from a previous run (esp. a launch failure) with a copyable stack.
+    NSString *pending = PBTakePendingCrashReport();
+    if (pending) [PBCrashReporter presentReport:pending title:@"PulseBar quit unexpectedly last time" allowContinue:YES];
+
+    @try {
+        [self launch];
+    } @catch (NSException *e) {
+        NSMutableString *r = [NSMutableString stringWithFormat:@"PulseBar failed to launch.\n\n%@: %@\n\nStack:\n",
+                              e.name, e.reason ?: @"(no reason)"];
+        for (NSString *f in e.callStackSymbols) [r appendFormat:@"%@\n", f];
+        [r writeToFile:PBCrashReportFile() atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        PBLog(@"launch failed: %@: %@", e.name, e.reason);
+        [PBCrashReporter presentReport:r title:@"PulseBar failed to launch" allowContinue:NO];
+    }
+}
+
+- (void)launch {
     [self installSignalHandlers];
     CtlMediaInit();
 

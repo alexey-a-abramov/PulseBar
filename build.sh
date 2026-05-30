@@ -49,7 +49,7 @@ clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
   "$SRC/BarView.m" "$SRC/PreviewData.m" "$SRC/TouchBarPresenter.m" "$SRC/MirrorController.m" \
   "$SRC/Agent.m" "$SRC/AgentWindowController.m" "$SRC/AgentCoordinator.m" \
   "$SRC/SettingsWindowController.m" "$SRC/LayoutEditorWindowController.m" \
-  "$SRC/ModifierMonitor.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
+  "$SRC/CrashReporter.m" "$SRC/ModifierMonitor.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
   -framework AppKit -framework Foundation -framework CoreFoundation \
   -framework IOKit -framework QuartzCore -framework CoreGraphics -framework CoreAudio \
   -framework Speech -framework AVFoundation -framework ApplicationServices \
@@ -63,3 +63,15 @@ cp "$MACOS/$APP_NAME" "$BUILD/$APP_NAME"   # bare binary for quick CLI launch
 
 echo "==> Built: $APPDIR"
 echo "    bare binary: $BUILD/$APP_NAME"
+
+# `build.sh --install` copies the bundle to /Applications (falls back to
+# ~/Applications if that's not writable) so Spotlight/Raycast can launch it.
+if [ "${1:-}" = "--install" ]; then
+  DEST="/Applications"
+  if [ ! -w "$DEST" ]; then DEST="$HOME/Applications"; mkdir -p "$DEST"; fi
+  rm -rf "$DEST/$APP_NAME.app"
+  ditto "$APPDIR" "$DEST/$APP_NAME.app"
+  # Drop any quarantine attr just in case, so first launch isn't blocked.
+  xattr -dr com.apple.quarantine "$DEST/$APP_NAME.app" 2>/dev/null || true
+  echo "==> Installed: $DEST/$APP_NAME.app"
+fi
