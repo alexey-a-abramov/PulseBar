@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# Builds PulseBar.app (a self-contained, ad-hoc-signed .app bundle) plus a bare
+# CLI binary, both under ./build. No Xcode project required — one clang call.
+#
+set -euo pipefail
+
+APP_NAME="PulseBar"
+BUNDLE_ID="com.fun.pulsebar"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+SRC="$ROOT/Sources"
+BUILD="$ROOT/build"
+APPDIR="$BUILD/$APP_NAME.app"
+MACOS="$APPDIR/Contents/MacOS"
+
+echo "==> Building $APP_NAME"
+rm -rf "$BUILD"
+mkdir -p "$MACOS" "$APPDIR/Contents/Resources"
+
+cat > "$APPDIR/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>$APP_NAME</string>
+  <key>CFBundleDisplayName</key><string>$APP_NAME</string>
+  <key>CFBundleExecutable</key><string>$APP_NAME</string>
+  <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSHumanReadableCopyright</key><string>Open source. Uses private Touch Bar SPI.</string>
+</dict>
+</plist>
+PLIST
+
+SDK="$(xcrun --sdk macosx --show-sdk-path)"
+echo "==> SDK: $SDK"
+
+clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
+  -Wall -Wno-deprecated-declarations \
+  "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" "$SRC/BarView.m" \
+  "$SRC/SettingsWindowController.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
+  -framework AppKit -framework Foundation -framework CoreFoundation \
+  -framework IOKit -framework QuartzCore -framework CoreGraphics -framework CoreAudio \
+  -o "$MACOS/$APP_NAME"
+
+# Ad-hoc code signature (private API needs no entitlements; this just keeps
+# Gatekeeper/launchd happy for a locally-built bundle).
+codesign --force --sign - "$APPDIR" >/dev/null 2>&1 && echo "==> ad-hoc signed" || echo "==> (codesign skipped)"
+
+cp "$MACOS/$APP_NAME" "$BUILD/$APP_NAME"   # bare binary for quick CLI launch
+
+echo "==> Built: $APPDIR"
+echo "    bare binary: $BUILD/$APP_NAME"
