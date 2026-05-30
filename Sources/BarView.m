@@ -12,7 +12,7 @@ typedef NS_ENUM(NSInteger, TileType) {
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
     TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
     TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND,
-    TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TTAB
+    TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TAPP_HIDE, TAPP_QUIT, TTAB
 };
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
 
@@ -102,6 +102,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 
 - (BOOL)isFlipped { return YES; }
 - (NSInteger)mode { return _mode; }
+- (NSInteger)recentMode { return _prevMode; }
 
 - (instancetype)initWithFrame:(NSRect)f {
     if ((self = [super initWithFrame:f])) {
@@ -390,7 +391,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             [g drawInBezierPath:[NSBezierPath bezierPathWithOvalInRect:orb] angle:45];
             [self symbol:@"sparkles" in:orb pt:11 color:[NSColor whiteColor]];
             break; }
-        case TFKEY: case TTAB: break;   // TFKEY is drawn inline by drawFnKeys
+        case TFKEY: case TAPP_HIDE: case TAPP_QUIT: case TTAB: break;   // drawn inline by overlays
     }
 }
 
@@ -439,11 +440,37 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     }
 }
 
+- (void)drawPillButton:(NSRect)r label:(NSString *)lab color:(NSColor *)c {
+    [[c colorWithAlphaComponent:0.20] setFill];
+    NSBezierPath *p = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 4) xRadius:6 yRadius:6];
+    [p fill]; [c setStroke]; p.lineWidth = 1; [p stroke];
+    [self tc:lab cx:NSMidX(r) y:r.size.height / 2 - 6 sz:11 w:NSFontWeightSemibold c:c];
+}
+
+- (void)drawAppOverlay:(NSRect)b {
+    CGFloat W = b.size.width, H = b.size.height;
+    [[[self accent] colorWithAlphaComponent:0.12] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
+    if (self.appIcon) {
+        NSRect ir = NSMakeRect(12, (H - 24) / 2, 24, 24);
+        [self.appIcon drawInRect:ir fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+    }
+    [self t:(self.appName ?: @"App") at:NSMakePoint(44, H / 2 - 9) sz:14 w:NSFontWeightBold c:[NSColor whiteColor]];
+    [self t:@"⌥ app — quick actions" at:NSMakePoint(44, H / 2 + 6) sz:8 w:NSFontWeightMedium c:[self dim]];
+    CGFloat bw = 74, gap = 8;
+    NSRect rh = NSMakeRect(W - 6 - bw * 2 - gap, 0, bw, H);
+    NSRect rq = NSMakeRect(W - 6 - bw, 0, bw, H);
+    [self drawPillButton:rh label:@"Hide" color:[self accent]];
+    [self drawPillButton:rq label:@"Quit" color:[self pink]];
+    [self push:TAPP_HIDE rect:rh arg:0];
+    [self push:TAPP_QUIT rect:rq arg:0];
+}
+
 - (void)drawRect:(NSRect)dirty {
     NSRect b = self.bounds; CGFloat W = b.size.width, H = b.size.height;
     [[NSColor colorWithCalibratedWhite:0.035 alpha:1] setFill]; NSRectFill(b);
     _nTiles = 0;
-    if (self.fnMode) { [self drawFnKeys:b]; return; }   // Fn held -> F1..F12
+    if (self.appOverlay) { [self drawAppOverlay:b]; return; }   // ⌥ held -> app context
+    if (self.fnMode)     { [self drawFnKeys:b];     return; }
     [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
 
     // right cluster (present in every mode): … agent · settings · clock(edge)
@@ -545,6 +572,8 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         case TSETTINGS: [d barOpenSettings]; break;
         case TAGENT:    [d barOpenAgent]; break;
         case TFKEY:     [d barSendFunctionKey:t->arg]; break;
+        case TAPP_HIDE: [d barAppAction:@"hide"]; break;
+        case TAPP_QUIT: [d barAppAction:@"quit"]; break;
         case TPOMO:     [d barTogglePomodoro]; [self setNeedsDisplay:YES]; break;
         case TCAFFEINE: [d barToggleCaffeine]; break;
         case TSC_LOCK:    [d barRunShortcut:@"lock"]; break;

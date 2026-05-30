@@ -31,7 +31,8 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barOpenSettings;
 - (void)barOpenAgent;
 - (void)barDidChangeMode:(NSInteger)mode;
-- (void)barSendFunctionKey:(NSInteger)n;   // n = 1..12
+- (void)barSendFunctionKey:(NSInteger)n;   // n = 1..12 (legacy)
+- (void)barAppAction:(NSString *)action;   // "hide" | "quit" the frontmost app
 @end
 
 @interface BarView : NSView
@@ -41,11 +42,15 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic) BOOL showCores;          // CPU tile: sparkline vs per-core
 @property (nonatomic) BOOL caffeinated;        // caffeine toggle state
 @property (nonatomic) BOOL animateModeSwitch;  // NO on the live Touch Bar (DFR), YES on desktop
-@property (nonatomic) BOOL fnMode;             // when YES, show F1–F12 instead of the normal bar
+@property (nonatomic) BOOL fnMode;             // (legacy) F1–F12 overlay — Fn is handled natively now
+@property (nonatomic) BOOL appOverlay;         // ⌥ held: show the frontmost-app overlay
+@property (nonatomic, copy)   NSString *appName;
+@property (nonatomic, strong) NSImage  *appIcon;
 @property (nonatomic) double uptime;           // seconds since boot (System mode)
 @property (nonatomic, readonly) NSInteger mode;
 
 - (void)setMode:(NSInteger)mode animated:(BOOL)animated;
+- (NSInteger)recentMode;       // the previously-active mode
 
 - (void)updateWithCPU:(double)cpu cores:(const double *)cores count:(int)n
                   mem:(MemInfo)mem net:(NetSample)net gpu:(double)gpu

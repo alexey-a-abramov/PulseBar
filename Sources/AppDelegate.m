@@ -52,6 +52,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     id          _fnGlobalMon;
     id          _fnLocalMon;
     NSMenuItem *_fnItem;
+    NSEventModifierFlags _prevFlags;
 }
 
 #pragma mark - lifecycle
@@ -81,10 +82,10 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
         if ([ud boolForKey:@"fullBar"]) [self applyFullBar:YES];                 // hide Control Strip
         if (![ud objectForKey:@"mirror"]) [ud setBool:YES forKey:@"mirror"];     // show desktop mirror
         if ([ud boolForKey:@"mirror"]) [self showMirror];
-        if (![ud objectForKey:@"fnKeys"]) [ud setBool:YES forKey:@"fnKeys"];     // F1–F12 on Fn
-        BOOL fn = [ud boolForKey:@"fnKeys"];
-        _fnItem.state = fn ? NSControlStateValueOn : NSControlStateValueOff;
-        if (fn) [self enableFnKeys];
+        if (![ud objectForKey:@"modifiers"]) [ud setBool:YES forKey:@"modifiers"];   // ⌘ recent · ⌥ app
+        BOOL mods = [ud boolForKey:@"modifiers"];
+        _fnItem.state = mods ? NSControlStateValueOn : NSControlStateValueOff;
+        if (mods) [self enableModifiers];
     }
 
     [self registerSleepWake];
@@ -179,7 +180,7 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     [menu addItemWithTitle:@"Re-attach to Touch Bar"  action:@selector(attachToTouchBar) keyEquivalent:@"r"];
     [menu addItemWithTitle:@"Toggle CPU-core view"    action:@selector(toggleCores)     keyEquivalent:@"c"];
     [menu addItemWithTitle:@"Open Log"                action:@selector(openLog)         keyEquivalent:@"l"];
-    _fnItem = [menu addItemWithTitle:@"Function Keys on Fn (F1–F12)" action:@selector(toggleFnKeys) keyEquivalent:@""];
+    _fnItem = [menu addItemWithTitle:@"Modifier shortcuts  (⌘ recent · ⌥ app)" action:@selector(toggleModifiers) keyEquivalent:@""];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Quit PulseBar" action:@selector(quit) keyEquivalent:@"q"];
     for (NSMenuItem *it in menu.itemArray) if (it.action) it.target = self;
@@ -382,47 +383,63 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 - (void)toggleCores  { self.barView.showCores = !self.barView.showCores; [self.barView setNeedsDisplay:YES]; }
 - (void)openLog { [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:PBLogFile()]]; }
 
-#pragma mark - function keys (hold Fn -> F1..F12)
+#pragma mark - modifier shortcuts (⌘ → recent mode · ⌥ → app overlay)
 
-- (void)enableFnKeys {
+- (void)enableModifiers {
     if (!AXIsProcessTrusted())
         AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)@{ (__bridge id)kAXTrustedCheckOptionPrompt: @YES });
     if (_fnGlobalMon) return;
     __weak AppDelegate *ws = self;
-    _fnGlobalMon = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^(NSEvent *e) {
-        [ws setFnActive:(e.modifierFlags & NSEventModifierFlagFunction) != 0];
-    }];
-    _fnLocalMon = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^NSEvent *(NSEvent *e) {
-        [ws setFnActive:(e.modifierFlags & NSEventModifierFlagFunction) != 0]; return e;
-    }];
-    PBLog(@"Fn keys enabled (Accessibility %@)", AXIsProcessTrusted() ? @"granted" : @"PENDING — grant in System Settings");
+    _fnGlobalMon = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^(NSEvent *e) { [ws modifierChanged:e.modifierFlags]; }];
+    _fnLocalMon  = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskFlagsChanged handler:^NSEvent *(NSEvent *e) { [ws modifierChanged:e.modifierFlags]; return e; }];
+    PBLog(@"modifier shortcuts enabled (Accessibility %@)", AXIsProcessTrusted() ? @"granted" : @"PENDING — grant in System Settings");
 }
-- (void)disableFnKeys {
+- (void)disableModifiers {
     if (_fnGlobalMon) { [NSEvent removeMonitor:_fnGlobalMon]; _fnGlobalMon = nil; }
     if (_fnLocalMon)  { [NSEvent removeMonitor:_fnLocalMon];  _fnLocalMon = nil; }
-    [self setFnActive:NO];
+    [self hideAppOverlay];
 }
-- (void)setFnActive:(BOOL)on {
-    if (self.barView.fnMode == on) return;
-    self.barView.fnMode = on; self.mirrorBar.fnMode = on;
+// Debounced (~0.3s) so quick ⌘-/⌥-shortcuts don't trigger; only a deliberate hold does.
+- (void)modifierChanged:(NSEventModifierFlags)flags {
+    BOOL cmdNow = (flags & NSEventModifierFlagCommand) != 0, cmdWas = (_prevFlags & NSEventModifierFlagCommand) != 0;
+    BOOL optNow = (flags & NSEventModifierFlagOption)  != 0, optWas = (_prevFlags & NSEventModifierFlagOption)  != 0;
+    _prevFlags = flags;
+    if (optNow && !optWas) [self performSelector:@selector(showAppOverlay) withObject:nil afterDelay:0.30];
+    if (!optNow && optWas) { [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(showAppOverlay) object:nil]; [self hideAppOverlay]; }
+    if (cmdNow && !cmdWas) [self performSelector:@selector(switchRecent) withObject:nil afterDelay:0.30];
+    if (!cmdNow && cmdWas) [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(switchRecent) object:nil];
+}
+- (void)switchRecent {
+    NSInteger r = [self.barView recentMode];
+    [self.barView setMode:r animated:self.barView.animateModeSwitch];
+    [self.mirrorBar setMode:r animated:self.mirrorBar.animateModeSwitch];
+    [NSUserDefaults.standardUserDefaults setInteger:r forKey:@"mode"];
+}
+- (void)showAppOverlay {
+    NSRunningApplication *app = [NSWorkspace sharedWorkspace].frontmostApplication;
+    NSString *name = app.localizedName ?: @"App"; NSImage *icon = app.icon;
+    self.barView.appName = name;   self.barView.appIcon = icon;   self.barView.appOverlay = YES;
+    self.mirrorBar.appName = name; self.mirrorBar.appIcon = icon; self.mirrorBar.appOverlay = YES;
     [self.barView setNeedsDisplay:YES]; [self.mirrorBar setNeedsDisplay:YES];
 }
-- (void)toggleFnKeys {
-    BOOL on = ![NSUserDefaults.standardUserDefaults boolForKey:@"fnKeys"];
-    [NSUserDefaults.standardUserDefaults setBool:on forKey:@"fnKeys"];
+- (void)hideAppOverlay {
+    if (!self.barView.appOverlay) return;
+    self.barView.appOverlay = NO; self.mirrorBar.appOverlay = NO;
+    [self.barView setNeedsDisplay:YES]; [self.mirrorBar setNeedsDisplay:YES];
+}
+- (void)toggleModifiers {
+    BOOL on = ![NSUserDefaults.standardUserDefaults boolForKey:@"modifiers"];
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:@"modifiers"];
     _fnItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
-    if (on) [self enableFnKeys]; else [self disableFnKeys];
+    if (on) [self enableModifiers]; else [self disableModifiers];
 }
-- (void)barSendFunctionKey:(NSInteger)n {
-    static const CGKeyCode codes[12] = { 0x7A, 0x78, 0x63, 0x76, 0x60, 0x61, 0x62, 0x64, 0x65, 0x6D, 0x67, 0x6F };
-    if (n < 1 || n > 12) return;
-    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-    CGEventRef down = CGEventCreateKeyboardEvent(src, codes[n - 1], true);
-    CGEventRef up   = CGEventCreateKeyboardEvent(src, codes[n - 1], false);
-    CGEventPost(kCGHIDEventTap, down); CGEventPost(kCGHIDEventTap, up);
-    if (down) CFRelease(down); if (up) CFRelease(up); if (src) CFRelease(src);
-    PBLog(@"sent F%ld", (long)n);
+- (void)barAppAction:(NSString *)a {
+    NSRunningApplication *app = [NSWorkspace sharedWorkspace].frontmostApplication;
+    if ([a isEqualToString:@"hide"]) [app hide];
+    else if ([a isEqualToString:@"quit"]) [app terminate];
+    [self hideAppOverlay];
 }
+- (void)barSendFunctionKey:(NSInteger)n { (void)n; }   // Fn → F-keys is handled natively now
 - (void)showSettings {
     if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
     [self.settings present];

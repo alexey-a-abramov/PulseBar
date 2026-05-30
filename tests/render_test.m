@@ -51,8 +51,8 @@ int main(void) { @autoreleasepool {
     [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:@"/tmp/pulsebar_modes.png" atomically:YES];
     printf("wrote /tmp/pulsebar_modes.png (%dx%d, %d modes)\n", pw, ph, rows);
 
-    // Fn overlay (F1–F12)
-    [v setMode:BarModeSystem animated:NO]; v.fnMode = YES;
+    // App overlay (⌥ held)
+    [v setMode:BarModeSystem animated:NO]; v.appName = @"Telegram"; v.appOverlay = YES;
     NSImage *fn = [[NSImage alloc] initWithData:[v dataWithPDFInsideRect:v.bounds]];
     int fw = (int)(W * S), fh = (int)(H * S);
     NSBitmapImageRep *fr = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:fw pixelsHigh:fh
