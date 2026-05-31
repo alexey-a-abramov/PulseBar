@@ -327,6 +327,7 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     CGFloat     _tabW[BarModeCount];
     NSTimer    *_animTimer;
 
+    NSInteger   _view[40];        // per-metric alternate-view index (tap to cycle); 0 = default
     Tile        _tiles[40];
     int         _nTiles;
     TileType    _activeSlider;
@@ -341,6 +342,14 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
 - (BOOL)isFlipped { return YES; }
 - (NSInteger)mode { return _mode; }
 - (NSInteger)recentMode { return _prevMode; }
+
+// How many alternate views each metric tile cycles through (tap to switch).
+static int viewCount(TileType t) {
+    switch (t) { case TCPU: case TMEM: case TGPU: case TNET: case TDISK: return 2; default: return 1; }
+}
+// CPU's view doubles as the legacy "show cores" toggle (used by the menu item).
+- (BOOL)showCores { return _view[TCPU] != 0; }
+- (void)setShowCores:(BOOL)v { _view[TCPU] = v ? 1 : 0; [self setNeedsDisplay:YES]; }
 
 - (instancetype)initWithFrame:(NSRect)f {
     if ((self = [super initWithFrame:f])) {
@@ -508,38 +517,68 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
             [self t:[NSString stringWithFormat:@"%.0f%%", _cpu] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self load:_cpu]];
             break; }
         case TMEM: {
+            NSColor *orange = [NSColor colorWithSRGBRed:1 green:0.60 blue:0.20 alpha:1];
             [self label:@"MEM" in:r];
-            // "swap NG" only when the full label fits before the right-aligned % (else dropped).
-            CGFloat swapX = r.origin.x + 34, swapMaxW = (NSMaxX(r) - 6 - 32) - swapX;
-            NSString *swapStr = [NSString stringWithFormat:@"swap %.0fG", toGB(_mem.swapUsedBytes)];
-            NSDictionary *swA = @{ NSFontAttributeName:monoFont(6.5, NSFontWeightBold) };
-            if (_mem.swapUsedBytes > 0 && [swapStr sizeWithAttributes:swA].width <= swapMaxW)
-                [self t:swapStr at:NSMakePoint(swapX, 3) sz:6.5 w:NSFontWeightBold c:[NSColor colorWithSRGBRed:1 green:0.60 blue:0.20 alpha:1]];
             [self t:[NSString stringWithFormat:@"%.0f%%", _mem.usedPct] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self load:_mem.usedPct]];
-            CGFloat bx = r.origin.x + 6, bw = r.size.width - 12, by = 17, bh = 8;
-            [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:4 yRadius:4] fill];
-            CGFloat fw = bw * MAX(0, MIN(1, _mem.usedPct / 100.0));
-            if (fw > 1) { [[[self load:_mem.usedPct] colorWithAlphaComponent:0.85] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, fw, bh) xRadius:4 yRadius:4] fill]; }
-            [self t:[NSString stringWithFormat:@"%.1f/%.0fG", toGB(_mem.usedBytes), toGB(_mem.totalBytes)] at:NSMakePoint(bx + 3, by - 0.5) sz:7 w:NSFontWeightMedium c:[NSColor colorWithCalibratedWhite:0.96 alpha:0.95]];
+            if (_view[TMEM] == 0) {                         // usage: bar + used/total (+ swap hint)
+                CGFloat swapX = r.origin.x + 34, swapMaxW = (NSMaxX(r) - 6 - 32) - swapX;
+                NSString *swapStr = [NSString stringWithFormat:@"swap %.0fG", toGB(_mem.swapUsedBytes)];
+                if (_mem.swapUsedBytes > 0 && [swapStr sizeWithAttributes:@{ NSFontAttributeName:monoFont(6.5, NSFontWeightBold) }].width <= swapMaxW)
+                    [self t:swapStr at:NSMakePoint(swapX, 3) sz:6.5 w:NSFontWeightBold c:orange];
+                CGFloat bx = r.origin.x + 6, bw = r.size.width - 12, by = 17, bh = 8;
+                [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:4 yRadius:4] fill];
+                CGFloat fw = bw * MAX(0, MIN(1, _mem.usedPct / 100.0));
+                if (fw > 1) { [[[self load:_mem.usedPct] colorWithAlphaComponent:0.85] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, fw, bh) xRadius:4 yRadius:4] fill]; }
+                [self t:[NSString stringWithFormat:@"%.1f/%.0fG", toGB(_mem.usedBytes), toGB(_mem.totalBytes)] at:NSMakePoint(bx + 3, by - 0.5) sz:7 w:NSFontWeightMedium c:[NSColor colorWithCalibratedWhite:0.96 alpha:0.95]];
+            } else {                                         // pressure + swap
+                NSColor *pc = _mem.pressure >= 4 ? [self pink] : (_mem.pressure >= 2 ? orange : [self green]);
+                NSString *pw = _mem.pressure >= 4 ? @"critical" : (_mem.pressure >= 2 ? @"warning" : @"normal");
+                [pc setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(r.origin.x + 6, 13, 6, 6)] fill];
+                [self t:pw at:NSMakePoint(r.origin.x + 15, 11) sz:8 w:NSFontWeightSemibold c:pc];
+                [self t:[NSString stringWithFormat:@"swap %.1fG", toGB(_mem.swapUsedBytes)] at:NSMakePoint(r.origin.x + 6, 21) sz:7.5 w:NSFontWeightMedium c:orange];
+            }
             break; }
         case TGPU: {
             [self label:@"GPU" in:r]; double g = _gpu < 0 ? 0 : _gpu;
             [self t:[NSString stringWithFormat:@"%.0f%%", g] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self gpuC]];
-            [self spark:_gpuHist rect:NSMakeRect(r.origin.x + 6, 13, r.size.width - 12, 15) color:[self gpuC] max:100];
+            if (_view[TGPU] == 0) {                          // dynamic: sparkline over time
+                [self spark:_gpuHist rect:NSMakeRect(r.origin.x + 6, 13, r.size.width - 12, 15) color:[self gpuC] max:100];
+            } else {                                         // fundamental: current load bar
+                CGFloat bx = r.origin.x + 6, bw = r.size.width - 12, by = 18, bh = 7;
+                [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:3 yRadius:3] fill];
+                CGFloat fw = bw * MAX(0, MIN(1, g / 100.0));
+                if (fw > 1) { [[[self gpuC] colorWithAlphaComponent:0.85] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, fw, bh) xRadius:3 yRadius:3] fill]; }
+            }
             break; }
         case TNET: {
             [self label:@"NET" in:r];
-            [self t:[NSString stringWithFormat:@"↓%@", fmtRate(_net.downBps)] at:NSMakePoint(r.origin.x + 6, 12) sz:8 w:NSFontWeightSemibold c:[self cyan]];
-            [self t:[NSString stringWithFormat:@"↑%@", fmtRate(_net.upBps)]   at:NSMakePoint(r.origin.x + 6, 21) sz:8 w:NSFontWeightSemibold c:[self pink]];
-            CGFloat sx = r.origin.x + r.size.width * 0.52;
-            [self spark:_netHist rect:NSMakeRect(sx, 13, NSMaxX(r) - 6 - sx, 15) color:[self cyan] max:_netMax];
+            if (_view[TNET] == 0) {                          // dynamic: rates + sparkline
+                [self t:[NSString stringWithFormat:@"↓%@", fmtRate(_net.downBps)] at:NSMakePoint(r.origin.x + 6, 12) sz:8 w:NSFontWeightSemibold c:[self cyan]];
+                [self t:[NSString stringWithFormat:@"↑%@", fmtRate(_net.upBps)]   at:NSMakePoint(r.origin.x + 6, 21) sz:8 w:NSFontWeightSemibold c:[self pink]];
+                CGFloat sx = r.origin.x + r.size.width * 0.52;
+                [self spark:_netHist rect:NSMakeRect(sx, 13, NSMaxX(r) - 6 - sx, 15) color:[self cyan] max:_netMax];
+            } else {                                         // fundamental: larger rate readout
+                [self t:[NSString stringWithFormat:@"↓ %@", fmtRate(_net.downBps)] at:NSMakePoint(r.origin.x + 6, 11) sz:10 w:NSFontWeightSemibold c:[self cyan]];
+                [self t:[NSString stringWithFormat:@"↑ %@", fmtRate(_net.upBps)]   at:NSMakePoint(r.origin.x + 6, 21) sz:10 w:NSFontWeightSemibold c:[self pink]];
+            }
             break; }
         case TDISK: {
             [self label:@"DISK" in:r];
-            if (_space.totalBytes) [self t:[NSString stringWithFormat:@"%.0fG", toGB(_space.freeBytes)] rx:NSMaxX(r) - 6 y:1 sz:11 w:NSFontWeightBold c:[NSColor colorWithSRGBRed:0.45 green:0.80 blue:0.92 alpha:1]];
-            [self t:[NSString stringWithFormat:@"R %@", fmtRate(_disk.readBps)]  at:NSMakePoint(r.origin.x + 6, 12) sz:8 w:NSFontWeightSemibold c:[self accent]];
-            [self t:[NSString stringWithFormat:@"W %@", fmtRate(_disk.writeBps)] at:NSMakePoint(r.origin.x + 6, 21) sz:8 w:NSFontWeightSemibold c:[self pink]];
-            [self t:@"free" rx:NSMaxX(r) - 6 y:21 sz:6.5 w:NSFontWeightBold c:[self dim]];
+            NSColor *dc = [NSColor colorWithSRGBRed:0.45 green:0.80 blue:0.92 alpha:1];
+            if (_view[TDISK] == 0) {                         // dynamic: R/W rates + free
+                if (_space.totalBytes) [self t:[NSString stringWithFormat:@"%.0fG", toGB(_space.freeBytes)] rx:NSMaxX(r) - 6 y:1 sz:11 w:NSFontWeightBold c:dc];
+                [self t:[NSString stringWithFormat:@"R %@", fmtRate(_disk.readBps)]  at:NSMakePoint(r.origin.x + 6, 12) sz:8 w:NSFontWeightSemibold c:[self accent]];
+                [self t:[NSString stringWithFormat:@"W %@", fmtRate(_disk.writeBps)] at:NSMakePoint(r.origin.x + 6, 21) sz:8 w:NSFontWeightSemibold c:[self pink]];
+                [self t:@"free" rx:NSMaxX(r) - 6 y:21 sz:6.5 w:NSFontWeightBold c:[self dim]];
+            } else {                                         // fundamental: free/used space bar
+                double frac = _space.totalBytes ? (double)(_space.totalBytes - _space.freeBytes) / _space.totalBytes : 0;
+                [self t:[NSString stringWithFormat:@"%.0fG free", toGB(_space.freeBytes)] at:NSMakePoint(r.origin.x + 6, 11) sz:8.5 w:NSFontWeightSemibold c:dc];
+                [self t:[NSString stringWithFormat:@"of %.0fG", toGB(_space.totalBytes)] rx:NSMaxX(r) - 6 y:12 sz:7 w:NSFontWeightMedium c:[self dim]];
+                CGFloat bx = r.origin.x + 6, bw = r.size.width - 12, by = 21, bh = 6;
+                [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:3 yRadius:3] fill];
+                CGFloat fw = bw * MAX(0, MIN(1, frac));
+                if (fw > 1) { [[dc colorWithAlphaComponent:0.8] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, fw, bh) xRadius:3 yRadius:3] fill]; }
+            }
             break; }
         case TMEDIA: {
             CGFloat by = 4, bs = 22, gap = 2, x0 = r.origin.x + 4;
@@ -846,7 +885,8 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     switch (t->type) {
         case TTAB: { NSInteger target = (t->arg == _mode) ? _prevMode : t->arg;   // tap the active pill -> jump to your last mode
                      [self setMode:target animated:self.animateModeSwitch]; [d barDidChangeMode:target]; break; }
-        case TCPU:      self.showCores = !self.showCores; [self setNeedsDisplay:YES]; break;
+        case TCPU: case TMEM: case TGPU: case TNET: case TDISK:   // tap a metric to cycle its view
+            _view[t->type] = (_view[t->type] + 1) % viewCount(t->type); [self setNeedsDisplay:YES]; break;
         case TSETTINGS: [d barOpenSettings]; break;
         case TAGENT:    [d barOpenAgent]; break;
         case TLAUNCH: { const Launcher *L = &gLaunchers[(t->arg >= 0 && t->arg < gLauncherCount) ? t->arg : 0];
