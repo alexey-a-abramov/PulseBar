@@ -53,6 +53,24 @@ SwiftPM — just `clang` over `Sources/*.m`.
 - Don't make system changes (the full-bar takeover restarts the Touch Bar agent)
   under test — the code skips them when `PULSEBAR_SELFQUIT` is set.
 
+### Stable signing (so permission grants persist)
+Ad-hoc signing changes the app's code identity every build, so macOS TCC
+re-prompts for Accessibility / Microphone / Speech after each rebuild. Create a
+one-off self-signed code-signing identity and `build.sh` will use it
+automatically (else it falls back to ad-hoc):
+
+```bash
+openssl req -x509 -newkey rsa:2048 -keyout k.pem -out c.pem -days 3650 -nodes \
+  -subj "/CN=PulseBar Local Signing" \
+  -addext "extendedKeyUsage=critical,codeSigning" -addext "keyUsage=critical,digitalSignature"
+openssl pkcs12 -export -inkey k.pem -in c.pem -out pb.p12 -name "PulseBar Local Signing" \
+  -passout pass:pulsebar -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg SHA1   # macOS-importable
+security import pb.p12 -k ~/Library/Keychains/login.keychain-db -P pulsebar -A -T /usr/bin/codesign
+rm -f k.pem c.pem pb.p12
+```
+Grant the permissions once after the first stable-signed install; they then
+survive every later rebuild. (Delete the cert in Keychain Access to revert.)
+
 ## Architecture
 
 ```
