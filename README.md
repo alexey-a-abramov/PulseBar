@@ -38,6 +38,13 @@ the timer is idle, PulseBar sets the next focus block from your current
 icon to start. The working session itself is time since your last >5-minute input
 gap (system-wide keyboard/mouse/Touch-Bar idle).
 
+### Focus side-notes
+Hold the **NOTE** tile in Focus mode and just talk (walkie-talkie) — release and
+keep working. The transcript is captured on-device and appended to
+`~/Library/Logs/PulseBar/notes.jsonl`; nothing opens, no agent runs. Export them
+as a table any time via the menu bar → **Export Side-Notes (CSV)** (writes
+`notes.csv`).
+
 ## Tiles (across modes)
 
 **Metrics (glanceable):**
@@ -123,6 +130,7 @@ Sources/
   Agent.m · AgentWindowController.m   intent resolver (fast-path → Gemma) · chat/voice window
   VoiceCommands.m           closed command vocabulary + offline intent parser
   AppIndex.m · Queries.m    fuzzy app launcher · read-only spoken status answers
+  VoiceNotes.m              Focus side-notes: walkie-talkie capture → notes.jsonl / CSV
   SettingsWindowController.m  desktop settings window
   LayoutEditorWindowController.m  size editor (per-tile size/priority/visibility)
   PBDefaults.m              NSUserDefaults key constants

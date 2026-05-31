@@ -36,6 +36,8 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barOpenAgent;
 - (void)barAgentDown;             // agent orb pressed — start/stop voice capture
 - (void)barAgentUp:(BOOL)wasHold; // released (wasHold = walkie-talkie)
+- (void)barNoteDown;              // Focus side-note tile pressed — start recording
+- (void)barNoteUp;                // released — stop + save the side note
 - (void)barDidChangeMode:(NSInteger)mode;
 - (void)barSendFunctionKey:(NSInteger)n;   // n = 1..12 (legacy)
 - (void)barAppAction:(NSString *)action;   // "hide" | "quit" the frontmost app
@@ -54,6 +56,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic, strong) NSImage  *appIcon;
 @property (nonatomic) double uptime;           // seconds since boot (System mode)
 @property (nonatomic) double sessionSeconds;   // length of the current active working session
+@property (nonatomic) BOOL   noteRecording;    // Focus side-note tile is capturing (turns red)
 @property (nonatomic, readonly) NSInteger mode;
 
 - (void)setMode:(NSInteger)mode animated:(BOOL)animated;

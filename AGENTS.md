@@ -97,6 +97,7 @@ Sources/
   VoiceCommands.m            closed command vocabulary + offline intent parser
   AppIndex.m                 fuzzy app-launcher index (scans /Applications etc.)
   Queries.m                  read-only spoken status answers (battery/cpu/…)
+  VoiceNotes.m               Focus side-notes: walkie-talkie capture → notes.jsonl + CSV export
   AgentWindowController.m    chat window: bubbles, quick chips, voice capture
   SettingsWindowController.m desktop settings window (full-bar, login, top-proc, pomodoro)
   LayoutEditorWindowController.m  size editor: per-tile size/priority/visibility + preview

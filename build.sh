@@ -47,7 +47,7 @@ clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
   "$SRC/PBDefaults.m" "$SRC/Log.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" \
   "$SRC/AppIndex.m" "$SRC/VoiceCommands.m" "$SRC/Queries.m" \
   "$SRC/BarView.m" "$SRC/PreviewData.m" "$SRC/TouchBarPresenter.m" "$SRC/MirrorController.m" \
-  "$SRC/Agent.m" "$SRC/AgentWindowController.m" "$SRC/AgentCoordinator.m" \
+  "$SRC/Agent.m" "$SRC/AgentWindowController.m" "$SRC/AgentCoordinator.m" "$SRC/VoiceNotes.m" \
   "$SRC/SettingsWindowController.m" "$SRC/LayoutEditorWindowController.m" \
   "$SRC/CrashReporter.m" "$SRC/ModifierMonitor.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
   -framework AppKit -framework Foundation -framework CoreFoundation \

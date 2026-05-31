@@ -25,7 +25,7 @@ typedef NS_ENUM(NSInteger, TileType) {
     TCPU, TMEM, TGPU, TNET, TDISK, TUPTIME,
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
     TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
-    TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND, TLAUNCH, TSESSION,
+    TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND, TLAUNCH, TSESSION, TNOTE,
     TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TAPP_HIDE, TAPP_QUIT, TTAB
 };
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
@@ -131,8 +131,8 @@ static int tilesForMode(NSInteger m, TileDef *out) {
             ADD(TMEDIA,  3.0, 100, 140); ADD(TVOL,   1.2,  80, 90);
             break;
         case BarModeProductivity:
-            ADDM(TPOMO,   1.5, 100, 80, 150);  ADDM(TSESSION, 0.9, 92, 60, 84);  ADDM(TCAFFEINE, 0.85, 80, 52, 64);
-            ADDM(TSC_NOTE,0.8,  60, 46, 56);   ADDM(TSC_REMIND,0.8, 50, 46, 56);  ADDM(TSC_LOCK, 0.8, 70, 46, 56);
+            ADDM(TPOMO,   1.5, 100, 80, 150);  ADDM(TSESSION, 0.9, 92, 60, 84);  ADDM(TNOTE, 0.8, 85, 48, 58);
+            ADDM(TCAFFEINE,0.85, 80, 52, 64);  ADDM(TSC_REMIND,0.8, 50, 46, 56);  ADDM(TSC_LOCK, 0.8, 70, 46, 56);
             break;
         case BarModeClassic:
             ADD(TBRIGHT, 1.3,  90, 90);  ADD(TVOL,   1.3, 100, 90);
@@ -160,7 +160,7 @@ static NSString *tileName(TileType t) {
         case TSC_LOCK: return @"Lock";     case TSC_SLEEP: return @"Sleep";   case TSC_SHOT: return @"Screenshot";
         case TSC_DARK: return @"Dark Mode";case TSC_MISSION: return @"Mission Control";
         case TSC_LAUNCH: return @"Launchpad"; case TSC_ACTIVITY: return @"Activity";
-        case TLAUNCH: return @"App"; case TSESSION: return @"Session";
+        case TLAUNCH: return @"App"; case TSESSION: return @"Session"; case TNOTE: return @"Side Note";
         default: return @"—";
     }
 }
@@ -177,7 +177,7 @@ static NSString *tileToken(TileType t) {
         case TCAFFEINE: return @"caffeine";case TSC_LOCK: return @"sc_lock";case TSC_SLEEP: return @"sc_sleep";
         case TSC_SHOT: return @"sc_shot";  case TSC_DARK: return @"sc_dark";case TSC_MISSION: return @"sc_mission";
         case TSC_NOTE: return @"sc_note";  case TSC_LAUNCH: return @"sc_launch"; case TSC_ACTIVITY: return @"sc_activity";
-        case TSC_REMIND: return @"sc_remind"; case TLAUNCH: return @"launch"; case TSESSION: return @"sess";
+        case TSC_REMIND: return @"sc_remind"; case TLAUNCH: return @"launch"; case TSESSION: return @"sess"; case TNOTE: return @"note";
         default: return [NSString stringWithFormat:@"t%d", (int)t];
     }
 }
@@ -340,6 +340,7 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     CGFloat     _downX;          // for swipe detection
     NSTimeInterval _lastTouchT;  // suppress mouse synthesized right after a Touch Bar touch
     BOOL        _agentPressing;  // agent orb press in progress
+    BOOL        _notePressing;   // Focus side-note tile held (recording)
     NSTimeInterval _pressDownT;  // when the orb press began (for hold detection)
 }
 
@@ -662,6 +663,10 @@ static int viewCount(TileType t) {
             [self label:@"SESSION" in:r];
             [self t:fmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
             break; }
+        case TNOTE: {   // hold to record a voice side-note (walkie-talkie)
+            BOOL rec = self.noteRecording;
+            [self action:rec ? @"waveform" : @"mic.fill" label:rec ? @"REC…" : @"NOTE" in:r active:rec color:[self pink]];
+            break; }
         case TBATT: {
             // Single compact icon: battery glyph with the % inside; charging bolt to its left.
             CGFloat bw = 26, bh = 14, bx = NSMidX(r) - (bw + 2) / 2, by = (r.size.height - bh) / 2;
@@ -836,7 +841,7 @@ static int viewCount(TileType t) {
 
 // Shared interaction core (used by both mouse and direct touch).
 - (void)beginAt:(NSPoint)p {
-    _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO; _agentPressing = NO;
+    _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO; _agentPressing = NO; _notePressing = NO;
     Tile *t = [self tileAt:p];
     if (pbDebug()) NSLog(@"[PB] beginAt (%.0f,%.0f) tile=%ld", p.x, p.y, t ? (long)t->type : -1);
     if (!t) return;
@@ -844,13 +849,16 @@ static int viewCount(TileType t) {
         _agentPressing = YES; _pressDownT = NSProcessInfo.processInfo.systemUptime;
         [self.actionDelegate barAgentDown]; return;
     }
+    if (t->type == TNOTE) {    // side note -> hold to record, release to save (walkie-talkie)
+        _notePressing = YES; [self.actionDelegate barNoteDown]; return;
+    }
     CGFloat iconW = 20;
     if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
     else if (t->type == TVOL && p.x >= t->rect.origin.x + iconW) { _activeSlider = TVOL; _sliding = YES; [self.actionDelegate barSetVolume:[self sliderValueFor:t at:p]]; }
     else { [self fireTap:t at:p]; }   // fire on press — reliable
 }
 - (void)moveAt:(NSPoint)p {
-    if (_agentPressing) return;   // holding the orb (walkie-talkie) — ignore drags/swipes
+    if (_agentPressing || _notePressing) return;   // holding orb/note (walkie-talkie) — ignore drags/swipes
     if (_sliding && _activeSlider >= 0) {
         for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
             float v = [self sliderValueFor:&_tiles[i] at:p];
@@ -871,6 +879,7 @@ static int viewCount(TileType t) {
         BOOL hold = (NSProcessInfo.processInfo.systemUptime - _pressDownT) >= 0.4;
         [self.actionDelegate barAgentUp:hold];
     }
+    if (_notePressing) { _notePressing = NO; [self.actionDelegate barNoteUp]; }
     _sliding = NO; _activeSlider = -1;
 }
 

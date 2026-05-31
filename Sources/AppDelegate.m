@@ -17,6 +17,7 @@
 #import "ModifierMonitor.h"
 #import "AppIndex.h"
 #import "AgentCoordinator.h"
+#import "VoiceNotes.h"
 #import "Log.h"
 #import <dlfcn.h>
 #import <signal.h>
@@ -33,6 +34,7 @@
 @property (nonatomic, strong) SettingsWindowController *settings;
 @property (nonatomic, strong) LayoutEditorWindowController *layoutEditor;
 @property (nonatomic, strong) NSTask               *caffeine;
+@property (nonatomic, strong) PBVoiceNotes         *voiceNotes;
 @property (nonatomic) BOOL                          showTopProc;
 @end
 
@@ -170,6 +172,7 @@
     [menu addItemWithTitle:@"Re-attach to Touch Bar"  action:@selector(attachToTouchBar) keyEquivalent:@"r"];
     [menu addItemWithTitle:@"Toggle CPU-core view"    action:@selector(toggleCores)     keyEquivalent:@"c"];
     [menu addItemWithTitle:@"Open Log"                action:@selector(openLog)         keyEquivalent:@"l"];
+    [menu addItemWithTitle:@"Export Side-Notes (CSV)…" action:@selector(exportNotes)    keyEquivalent:@""];
     _fnItem = [menu addItemWithTitle:@"Modifier shortcuts  (⌘ recent · ⌥ app)" action:@selector(toggleModifiers) keyEquivalent:@""];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Quit PulseBar" action:@selector(quit) keyEquivalent:@"q"];
@@ -276,6 +279,19 @@
     [self.pomo cycleWorkLength];
     [NSUserDefaults.standardUserDefaults setInteger:self.pomo.workMinutes forKey:PBKeyWork];
 }
+// Focus side-note: hold to record, release to save (no chat, no agent).
+- (void)barNoteDown {
+    if (!self.voiceNotes) {
+        self.voiceNotes = [PBVoiceNotes new];
+        __weak AppDelegate *ws = self;
+        self.voiceNotes.onStateChange = ^(BOOL rec) {
+            ws.barView.noteRecording = rec; ws.mirror.bar.noteRecording = rec;
+            [ws.barView setNeedsDisplay:YES]; [ws.mirror.bar setNeedsDisplay:YES];
+        };
+    }
+    [self.voiceNotes start];
+}
+- (void)barNoteUp { [self.voiceNotes stopAndSave]; }
 - (void)barOpenSettings         { [self showSettings]; }
 - (PBAgentCoordinator *)agentCoord {
     if (!_agentCoord) _agentCoord = [[PBAgentCoordinator alloc] initWithHost:self];
@@ -365,6 +381,16 @@
 
 - (void)toggleCores  { self.barView.showCores = !self.barView.showCores; [self.barView setNeedsDisplay:YES]; }
 - (void)openLog { [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:PBLogFile()]]; }
+- (void)exportNotes {
+    NSString *path = [PBVoiceNotes exportCSV];
+    if (path) { [[NSWorkspace sharedWorkspace] selectFile:path inFileViewerRootedAtPath:PBLogDirectory()]; }
+    else {
+        NSAlert *a = [NSAlert new];
+        a.messageText = @"No side-notes yet";
+        a.informativeText = @"Hold the NOTE tile in Focus mode and speak to capture a side-note.";
+        [NSApp activateIgnoringOtherApps:YES]; [a runModal];
+    }
+}
 
 #pragma mark - modifier shortcuts (⌘ → recent mode · ⌥ → app overlay)
 
