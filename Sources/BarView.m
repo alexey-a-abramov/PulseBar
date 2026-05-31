@@ -7,6 +7,7 @@
 #import "BarView.h"
 #import "Pomodoro.h"
 #import "PBDefaults.h"
+#import "AppIndex.h"
 
 NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
 
@@ -25,7 +26,7 @@ typedef NS_ENUM(NSInteger, TileType) {
     TCPU, TMEM, TGPU, TNET, TDISK, TUPTIME,
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
     TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
-    TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND,
+    TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND, TLAUNCH,
     TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TAPP_HIDE, TAPP_QUIT, TTAB
 };
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
@@ -71,12 +72,42 @@ static NSString *modeLabel(NSInteger m) {
 //   prio   — higher survives longer; lowest-prio tiles are hidden first when
 //            the content area can't fit everyone's minW.
 //   minW   — narrowest width at which the tile is still legible.
+//   arg    — opaque per-tile index (e.g. which launcher app); 0 for most tiles.
 // Array order is the on-screen left→right order; prio is independent of it.
-typedef struct { TileType type; CGFloat weight; int prio; CGFloat minW; } TileDef;
+typedef struct { TileType type; CGFloat weight; int prio; CGFloat minW; int arg; } TileDef;
+
+// The Actions mode is a colourful app-launcher palette. Each entry shows the
+// real app icon (via PBAppIndex + NSWorkspace) and launches it on tap. `cmd`
+// (non-NULL) runs in a terminal instead of opening an app (e.g. Claude Code).
+typedef struct { const char *label; const char *query; const char *cmd; } Launcher;
+static const Launcher gLaunchers[] = {
+    { "ARC",      "Arc",       NULL },
+    { "TERMIUS",  "Termius 2", NULL },
+    { "ZED",      "Zed",       NULL },     // resolves "Zed Preview"
+    { "CLAUDE",   "Claude",    NULL },
+    { "CODE",     "Claude",    "claude" }, // Claude Code: run `claude` in a terminal
+    { "DYNALIST", "Dynalist",  NULL },
+};
+static const int gLauncherCount = (int)(sizeof(gLaunchers) / sizeof(gLaunchers[0]));
+
+// The real (colourful) app icon for a launcher query, cached so we don't hit
+// the disk on every 1 Hz redraw. NSNull marks a miss (app not installed).
+static NSImage *launcherIcon(const char *queryC) {
+    static NSMutableDictionary<NSString *, id> *cache;
+    if (!cache) cache = [NSMutableDictionary dictionary];
+    NSString *q = @(queryC);
+    id hit = cache[q];
+    if (hit) return (hit == [NSNull null]) ? nil : hit;
+    PBAppEntry *e = [[PBAppIndex shared] bestMatchFor:q];
+    NSImage *img = e.path ? [[NSWorkspace sharedWorkspace] iconForFile:e.path] : nil;
+    cache[q] = img ?: (id)[NSNull null];
+    return img;
+}
 
 static int tilesForMode(NSInteger m, TileDef *out) {
     int n = 0;
-    #define ADD(t, wt, pr, mn) do { out[n++] = (TileDef){(t), (wt), (pr), (mn)}; } while (0)
+    #define ADD(t, wt, pr, mn)  do { out[n++] = (TileDef){(t), (wt), (pr), (mn), 0}; } while (0)
+    #define ADDL(ix, wt, pr, mn) do { out[n++] = (TileDef){TLAUNCH, (wt), (pr), (mn), (ix)}; } while (0)
     switch (m) {
         case BarModeSystem:
             ADD(TCPU,    1.6, 100, 64);  ADD(TMEM,   1.05, 90, 56);  ADD(TGPU,   0.7, 45, 44);
@@ -94,13 +125,13 @@ static int tilesForMode(NSInteger m, TileDef *out) {
             ADD(TBRIGHT, 1.3,  90, 90);  ADD(TVOL,   1.3, 100, 90);
             ADD(TMUTE,   0.7,  70, 40);  ADD(TMEDIA, 1.8,  80, 120);
             break;
-        case BarModeShortcuts:
-            ADD(TSC_LOCK,1, 100, 44); ADD(TSC_SLEEP,   1, 95, 44); ADD(TSC_SHOT,  1, 90, 44);
-            ADD(TSC_DARK,1,  85, 44); ADD(TSC_MISSION, 1, 80, 44); ADD(TSC_LAUNCH,1, 75, 44);
-            ADD(TSC_ACTIVITY,1, 70, 44); ADD(TCAFFEINE, 1, 65, 44);
+        case BarModeShortcuts:   // app-launcher palette + a couple of utilities
+            for (int i = 0; i < gLauncherCount; i++) ADDL(i, 1, 90 - i, 50);   // apps survive longest, left→right
+            ADD(TSC_SHOT, 0.9, 40, 44); ADD(TSC_LOCK, 0.9, 35, 44);
             break;
     }
     #undef ADD
+    #undef ADDL
     return n;
 }
 
@@ -115,6 +146,7 @@ static NSString *tileName(TileType t) {
         case TSC_LOCK: return @"Lock";     case TSC_SLEEP: return @"Sleep";   case TSC_SHOT: return @"Screenshot";
         case TSC_DARK: return @"Dark Mode";case TSC_MISSION: return @"Mission Control";
         case TSC_LAUNCH: return @"Launchpad"; case TSC_ACTIVITY: return @"Activity";
+        case TLAUNCH: return @"App";
         default: return @"—";
     }
 }
@@ -131,7 +163,7 @@ static NSString *tileToken(TileType t) {
         case TCAFFEINE: return @"caffeine";case TSC_LOCK: return @"sc_lock";case TSC_SLEEP: return @"sc_sleep";
         case TSC_SHOT: return @"sc_shot";  case TSC_DARK: return @"sc_dark";case TSC_MISSION: return @"sc_mission";
         case TSC_NOTE: return @"sc_note";  case TSC_LAUNCH: return @"sc_launch"; case TSC_ACTIVITY: return @"sc_activity";
-        case TSC_REMIND: return @"sc_remind";
+        case TSC_REMIND: return @"sc_remind"; case TLAUNCH: return @"launch";
         default: return [NSString stringWithFormat:@"t%d", (int)t];
     }
 }
@@ -175,12 +207,16 @@ static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     int n = *pn, out = 0;
     for (int i = 0; i < n; i++) {
-        NSDictionary *o = [ud dictionaryForKey:overrideKey(mode, defs[i].type)];
-        if (o) {
-            if ([o[@"hidden"] boolValue]) continue;                       // force-hidden → drop
-            if (o[@"w"])    defs[i].weight = MAX(0.2, [o[@"w"] doubleValue]);
-            if (o[@"prio"]) defs[i].prio   = [o[@"prio"] intValue];
-            if (o[@"minW"]) defs[i].minW   = MAX(24, MIN(200, [o[@"minW"] doubleValue]));
+        // Launcher tiles share one type token, so per-tile size overrides don't
+        // apply to them individually — keep them as-is.
+        if (defs[i].type != TLAUNCH) {
+            NSDictionary *o = [ud dictionaryForKey:overrideKey(mode, defs[i].type)];
+            if (o) {
+                if ([o[@"hidden"] boolValue]) continue;                   // force-hidden → drop
+                if (o[@"w"])    defs[i].weight = MAX(0.2, [o[@"w"] doubleValue]);
+                if (o[@"prio"]) defs[i].prio   = [o[@"prio"] intValue];
+                if (o[@"minW"]) defs[i].minW   = MAX(24, MIN(200, [o[@"minW"] doubleValue]));
+            }
         }
         defs[out++] = defs[i];
     }
@@ -580,6 +616,15 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             [g drawInBezierPath:[NSBezierPath bezierPathWithOvalInRect:orb] angle:45];
             [self symbol:@"sparkles" in:orb pt:11 color:[NSColor whiteColor]];
             break; }
+        case TLAUNCH: {
+            const Launcher *L = &gLaunchers[(tile.arg >= 0 && tile.arg < gLauncherCount) ? tile.arg : 0];
+            NSImage *icon = launcherIcon(L->query);
+            CGFloat d = 18, ix = NSMidX(r) - d / 2;
+            if (icon) [icon drawInRect:NSMakeRect(ix, 4, d, d) fromRect:NSZeroRect
+                             operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+            else [self symbol:@"app.dashed" in:NSMakeRect(r.origin.x, 4, r.size.width, d) pt:14 color:[self accent]];
+            [self tc:@(L->label) cx:NSMidX(r) y:23 sz:6.5 w:NSFontWeightBold c:[self dim]];
+            break; }
         case TFKEY: case TAPP_HIDE: case TAPP_QUIT: case TTAB: break;   // drawn inline by overlays
     }
     [NSGraphicsContext restoreGraphicsState];
@@ -604,8 +649,8 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     for (int i = 0; i < nvis; i++) {
         CGFloat tw = vis[i].minW + extra * vis[i].weight / sumW;
         NSRect r = NSMakeRect(x, 0, tw, area.size.height);
-        if (draw) [self drawTile:(Tile){vis[i].type, r, 0}];
-        if (record) [self push:vis[i].type rect:r arg:0];
+        if (draw) [self drawTile:(Tile){vis[i].type, r, vis[i].arg}];
+        if (record) [self push:vis[i].type rect:r arg:vis[i].arg];
         x += tw;
         if (draw && i < nvis - 1) [self divider:x];
     }
@@ -786,6 +831,8 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         case TCPU:      self.showCores = !self.showCores; [self setNeedsDisplay:YES]; break;
         case TSETTINGS: [d barOpenSettings]; break;
         case TAGENT:    [d barOpenAgent]; break;
+        case TLAUNCH: { const Launcher *L = &gLaunchers[(t->arg >= 0 && t->arg < gLauncherCount) ? t->arg : 0];
+                        if (L->cmd) [d barRunTerminalCommand:@(L->cmd)]; else [d barLaunchApp:@(L->query)]; break; }
         case TFKEY:     [d barSendFunctionKey:t->arg]; break;
         case TAPP_HIDE: [d barAppAction:@"hide"]; break;
         case TAPP_QUIT: [d barAppAction:@"quit"]; break;
@@ -872,6 +919,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     int n = tilesForMode(mode, defs);
     NSMutableArray *out = [NSMutableArray arrayWithCapacity:n];
     for (int i = 0; i < n; i++) {
+        if (defs[i].type == TLAUNCH) continue;   // launcher apps aren't individually size-editable
         [out addObject:@{ @"type":   @(defs[i].type),
                           @"name":   tileName(defs[i].type),
                           @"weight": @(defs[i].weight),

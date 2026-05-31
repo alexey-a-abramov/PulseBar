@@ -38,7 +38,7 @@ SwiftPM — just `clang` over `Sources/*.m`.
   Build & run it, then look at the PNG:
   ```bash
   clang -fobjc-arc -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
-    tests/render_test.m Sources/BarView.m Sources/Pomodoro.m Sources/PreviewData.m \
+    tests/render_test.m Sources/BarView.m Sources/Pomodoro.m Sources/PreviewData.m Sources/AppIndex.m \
     -framework AppKit -framework Foundation -o build/render_test && ./build/render_test
   ```
 - The **Desktop Mirror** (a floating panel, shown by default) is an exact, clickable

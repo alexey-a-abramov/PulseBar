@@ -15,6 +15,7 @@
 #import "LayoutEditorWindowController.h"
 #import "CrashReporter.h"
 #import "ModifierMonitor.h"
+#import "AppIndex.h"
 #import "AgentCoordinator.h"
 #import "Log.h"
 #import <dlfcn.h>
@@ -264,6 +265,19 @@
 // PBAgentHost — system actions the coordinator delegates back to us.
 - (void)agentLaunch:(NSString *)path args:(NSArray<NSString *> *)args { [self launch:path args:args]; }
 - (void)agentRunShortcut:(NSString *)name { [self barRunShortcut:name]; }
+
+// Launcher-tile actions (Actions/app palette).
+- (void)barLaunchApp:(NSString *)query {
+    PBAppEntry *e = [[PBAppIndex shared] bestMatchFor:query];
+    [self launch:@"/usr/bin/open" args:@[@"-a", e.path ?: query]];
+    PBLog(@"launch app: %@ -> %@", query, e.path ?: @"(unresolved)");
+}
+- (void)barRunTerminalCommand:(NSString *)cmd {
+    NSString *src = [NSString stringWithFormat:
+        @"tell application \"Terminal\"\nactivate\ndo script \"%@\"\nend tell", cmd];
+    [self launch:@"/usr/bin/osascript" args:@[@"-e", src]];
+    PBLog(@"run in terminal: %@", cmd);
+}
 
 // PulseBar self-management driven by voice/agent.
 - (void)agentSetMode:(NSString *)mode {

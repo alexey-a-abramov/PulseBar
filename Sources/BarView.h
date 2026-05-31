@@ -28,6 +28,8 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barTogglePomodoro;
 - (void)barToggleCaffeine;
 - (void)barRunShortcut:(NSString *)action;
+- (void)barLaunchApp:(NSString *)query;            // launcher tile — open an app (fuzzy-resolved)
+- (void)barRunTerminalCommand:(NSString *)cmd;     // launcher tile — run a command in a terminal
 - (void)barOpenSettings;
 - (void)barOpenAgent;
 - (void)barAgentDown;             // agent orb pressed — start/stop voice capture
