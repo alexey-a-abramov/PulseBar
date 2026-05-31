@@ -27,6 +27,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barMediaPrev;
 - (void)barMediaSeek:(float)fraction;   // tap the progress bar to jump (0..1)
 - (void)barTogglePomodoro;
+- (void)barCyclePomodoroLength;   // tap the time area when stopped → adjust focus length
 - (void)barToggleCaffeine;
 - (void)barRunShortcut:(NSString *)action;
 - (void)barLaunchApp:(NSString *)query;            // launcher tile — open an app (fuzzy-resolved)

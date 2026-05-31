@@ -625,12 +625,14 @@ static int viewCount(TileType t) {
             break; }
         case TPOMO: {
             Pomodoro *p = self.pomodoro;
+            BOOL idle = !p || p.state == PomoIdle;
             NSString *lab = p ? [p label] : @"POMODORO", *clock = p ? [p clockText] : @"25:00";
             BOOL work = p && (p.state == PomoWork), running = p && (p.state == PomoWork || p.state == PomoBreak);
             NSColor *col = running ? (work ? [NSColor colorWithSRGBRed:1 green:0.42 blue:0.30 alpha:1] : [self green]) : [self dim];
-            [self label:lab in:r];
-            [self symbol:running ? @"pause.circle.fill" : @"play.circle.fill" in:NSMakeRect(r.origin.x + 4, 12, 16, 16) pt:13 color:col];
+            [self label:idle ? (p.adaptiveLength ? @"FOCUS · auto" : @"FOCUS · set") : lab in:r];
+            [self symbol:running ? @"pause.circle.fill" : @"play.circle.fill" in:NSMakeRect(r.origin.x + 4, 12, 16, 16) pt:13 color:running ? col : [self green]];
             [self t:clock at:NSMakePoint(r.origin.x + 22, 13) sz:13 w:NSFontWeightBold c:col];
+            if (idle) [self t:@"▾" rx:NSMaxX(r) - 6 y:13 sz:10 w:NSFontWeightBold c:[self dim]];   // tap the time → adjust
             if (p && running) { CGFloat bx = r.origin.x + 6, bw = r.size.width - 12;
                 [[col colorWithAlphaComponent:0.25] setFill]; NSRectFill(NSMakeRect(bx, NSMaxY(r) - 3, bw, 1.5));
                 [col setFill]; NSRectFill(NSMakeRect(bx, NSMaxY(r) - 3, bw * [p progress], 1.5)); }
@@ -908,7 +910,11 @@ static int viewCount(TileType t) {
         case TFKEY:     [d barSendFunctionKey:t->arg]; break;
         case TAPP_HIDE: [d barAppAction:@"hide"]; break;
         case TAPP_QUIT: [d barAppAction:@"quit"]; break;
-        case TPOMO:     [d barTogglePomodoro]; [self setNeedsDisplay:YES]; break;
+        case TPOMO: {   // stopped: tap the play icon to start, the time to adjust length; running: pause
+            BOOL idle = (self.pomodoro.state == PomoIdle);
+            if (idle && p.x >= t->rect.origin.x + 24) [d barCyclePomodoroLength];
+            else [d barTogglePomodoro];
+            [self setNeedsDisplay:YES]; break; }
         case TCAFFEINE: [d barToggleCaffeine]; break;
         case TSC_LOCK:    [d barRunShortcut:@"lock"]; break;
         case TSC_SLEEP:   [d barRunShortcut:@"displaysleep"]; break;

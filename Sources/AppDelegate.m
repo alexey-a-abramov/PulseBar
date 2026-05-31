@@ -242,6 +242,10 @@
         double session = (idle < kGap) ? (now - _sessionStart) : (_lastActive - _sessionStart);
         self.barView.sessionSeconds = session;
         self.mirror.bar.sessionSeconds = session;
+        // Adaptive Pomodoro: while idle (and not manually set), the focus block
+        // grows with the uninterrupted working session. See README.
+        if (self.pomo.state == PomoIdle && self.pomo.adaptiveLength)
+            self.pomo.workMinutes = [Pomodoro adaptiveWorkMinutes:session];
     }
 
     NSString *tp = [NSString stringWithUTF8String:_topBuf] ?: @"";
@@ -268,6 +272,10 @@
 - (void)barMediaPrev            { PBLog(@"action media prev"); CtlMediaPrev(); }
 - (void)barMediaSeek:(float)f   { PBLog(@"action media seek %.0f%%", f * 100); CtlMediaSeek(f); }
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
+- (void)barCyclePomodoroLength  {
+    [self.pomo cycleWorkLength];
+    [NSUserDefaults.standardUserDefaults setInteger:self.pomo.workMinutes forKey:PBKeyWork];
+}
 - (void)barOpenSettings         { [self showSettings]; }
 - (PBAgentCoordinator *)agentCoord {
     if (!_agentCoord) _agentCoord = [[PBAgentCoordinator alloc] initWithHost:self];

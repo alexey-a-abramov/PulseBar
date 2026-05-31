@@ -16,13 +16,27 @@ the panel cross-fades, and your choice is remembered:
 
 | Mode | Contents |
 |------|----------|
-| **System**  | CPU (+ top process) · MEM (+ swap) · GPU · NET · DISK |
-| **Media**   | now-playing transport (◀ ⏯ ▶) · volume |
-| **Focus**   | Pomodoro · ☕ caffeine keep-awake · New Note · Lock |
+| **System**  | CPU · MEM · GPU · NET · DISK · uptime/session · battery |
+| **Media**   | now-playing transport (◀ ⏯ ▶) · scrubber (tap to seek) · volume |
+| **Focus**   | adaptive Pomodoro · **session** · ☕ caffeine · New Note · Lock |
 | **Classic** | brightness · volume · media (the Control-Strip basics) |
-| **Actions** | Lock · Display-Sleep · Screenshot · Dark Mode · Mission Control · caffeine |
+| **Actions** | colourful app launcher (Arc · Termius · Zed · Claude · Claude Code · Dynalist) · Screenshot · Lock |
 
-Battery, clock and the ⚙ gear stay pinned on the right in every mode.
+The agent orb stays pinned on the right in every mode; the clock and ⚙ settings
+live in the menu bar (not the bar).
+
+**Tap a metric tile to cycle its view** (dynamic ↔ fundamental): CPU sparkline↔cores,
+MEM usage↔pressure/swap, GPU spark↔bar, NET rates↔readout, DISK rates↔space,
+and the uptime chip toggles **uptime ↔ session**.
+
+### Adaptive Pomodoro
+The focus timer's length adapts to how long you've actually been working. While
+the timer is idle, PulseBar sets the next focus block from your current
+**uninterrupted working session** (the "session" chip): **25 min + 5 min for every
+30 min of session, clamped to 20–50 min**. Tap the time to override it manually
+(cycles 20 → 25 → 30 → 45 → 50; the "auto" label switches to "set"); tap the play
+icon to start. The working session itself is time since your last >5-minute input
+gap (system-wide keyboard/mouse/Touch-Bar idle).
 
 ## Tiles (across modes)
 

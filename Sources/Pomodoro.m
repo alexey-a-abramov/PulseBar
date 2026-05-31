@@ -12,11 +12,25 @@
     if ((self = [super init])) {
         _workMinutes = 25;
         _breakMinutes = 5;
+        _adaptiveLength = YES;
         _state = PomoIdle;
         _resumeState = PomoWork;
         _remaining = 0;
     }
     return self;
+}
+
++ (NSInteger)adaptiveWorkMinutes:(double)sessionSeconds {
+    NSInteger m = 25 + 5 * (NSInteger)(sessionSeconds / 1800.0);   // +5 min per 30 min of session
+    return MAX(20, MIN(50, m));
+}
+
+- (void)cycleWorkLength {
+    NSInteger presets[] = { 20, 25, 30, 45, 50 };
+    int n = (int)(sizeof(presets) / sizeof(presets[0])), idx = 0;
+    for (int i = 0; i < n; i++) if (presets[i] == _workMinutes) { idx = i; break; }
+    _workMinutes = presets[(idx + 1) % n];
+    _adaptiveLength = NO;   // manual choice sticks
 }
 
 - (NSInteger)remainingSeconds { return (NSInteger)ceil(_remaining); }
