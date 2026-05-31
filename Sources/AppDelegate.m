@@ -119,7 +119,17 @@
     [wc addObserver:self selector:@selector(resumeSampling) name:NSWorkspaceScreensDidWakeNotification  object:nil];
     [wc addObserver:self selector:@selector(pauseSampling)  name:NSWorkspaceWillSleepNotification       object:nil];
     [wc addObserver:self selector:@selector(resumeSampling) name:NSWorkspaceDidWakeNotification          object:nil];
+    // When the frontmost app changes, macOS re-adds the system close box to our
+    // background modal and shifts the content (hiding the agent orb). Re-assert
+    // our presentation to reclaim the bar.
+    [wc addObserver:self selector:@selector(activeAppChanged:) name:NSWorkspaceDidActivateApplicationNotification object:nil];
 }
+- (void)activeAppChanged:(NSNotification *)n {
+    if (getenv("PULSEBAR_SELFQUIT")) return;   // don't fight the Touch Bar under test
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(reassertBar) object:nil];
+    [self performSelector:@selector(reassertBar) withObject:nil afterDelay:0.12];   // coalesce rapid switches
+}
+- (void)reassertBar { [self.presenter reassert]; }
 - (void)pauseSampling { [self.timer invalidate]; self.timer = nil; }
 - (void)resumeSampling {
     if (self.timer) return;

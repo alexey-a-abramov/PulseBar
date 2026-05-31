@@ -99,6 +99,19 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     else PBLog(@"close-box SPI unavailable (DFRSystemModalShowsCloseBoxWhenFrontMost not found)");
 }
 
+// On a frontmost-app change macOS re-decorates our background modal with its
+// close box (and shifts our content, hiding the agent orb). Re-present to
+// re-own the bar and re-hide the box — quietly (no log spam on every switch).
+- (void)reassert {
+    if (!_spiOK) return;
+    Class TB = NSClassFromString(@"NSTouchBar");
+    if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:systemTrayItemIdentifier:)])
+        [NSTouchBar presentSystemModalTouchBar:_fullBar systemTrayItemIdentifier:kStripID];
+    else if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:placement:systemTrayItemIdentifier:)])
+        [NSTouchBar presentSystemModalTouchBar:_fullBar placement:1 systemTrayItemIdentifier:kStripID];
+    [self hideCloseBox];
+}
+
 - (void)detach {
     Class TB = NSClassFromString(@"NSTouchBar");
     if (_setPresence) _setPresence(kStripID, NO);
