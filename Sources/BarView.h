@@ -52,6 +52,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic, copy)   NSString *appName;
 @property (nonatomic, strong) NSImage  *appIcon;
 @property (nonatomic) double uptime;           // seconds since boot (System mode)
+@property (nonatomic) double sessionSeconds;   // length of the current active working session
 @property (nonatomic, readonly) NSInteger mode;
 
 - (void)setMode:(NSInteger)mode animated:(BOOL)animated;

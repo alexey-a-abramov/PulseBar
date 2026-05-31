@@ -41,6 +41,7 @@
     char        _topBuf[256];
     double      _topCPU;
     NSInteger   _tick;
+    double      _sessionStart, _lastActive;   // active working-session tracking (system input idle)
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
     NSMenuItem *_fnItem;
@@ -228,6 +229,20 @@
     if (med) { CtlMediaRefresh(); np = CtlNowPlaying(); vol = CtlGetVolume(); mute = CtlGetMute(); bright = CtlGetBrightness(); }
 
     [self.pomo tick:1.0];
+
+    // Active working session: time since the last >5-min input gap. CG idle time
+    // is system-wide (keyboard/mouse/Touch Bar) and needs no permission.
+    {
+        double now = NSProcessInfo.processInfo.systemUptime;
+        double idle = CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateHIDSystemState, kCGAnyInputEventType);
+        double lastInput = now - idle;
+        const double kGap = 300;   // a gap longer than this ends the session
+        if (_sessionStart <= 0 || (lastInput - _lastActive) > kGap) _sessionStart = lastInput;
+        _lastActive = lastInput;
+        double session = (idle < kGap) ? (now - _sessionStart) : (_lastActive - _sessionStart);
+        self.barView.sessionSeconds = session;
+        self.mirror.bar.sessionSeconds = session;
+    }
 
     NSString *tp = [NSString stringWithUTF8String:_topBuf] ?: @"";
     [self.barView updateWithCPU:cpu cores:_cores count:n mem:mem net:net gpu:gpu

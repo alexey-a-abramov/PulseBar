@@ -16,7 +16,6 @@ NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
 // to the trailing edge — clock and agent orb — plus the gap between them and the
 // trailing padding. (Settings now lives in the menu bar, not the cluster.)
 static const CGFloat kClusterPad = 4;    // trailing padding before the cluster
-static const CGFloat kClockW     = 86;
 static const CGFloat kAgentW     = 32;
 static const CGFloat kClusterGap = 2;    // gap between adjacent cluster controls
 
@@ -122,8 +121,8 @@ static int tilesForMode(NSInteger m, TileDef *out) {
     switch (m) {
         case BarModeSystem:
             ADD(TCPU,    1.6, 100, 64);  ADD(TMEM,   1.05, 90, 56);  ADD(TGPU,   0.7, 45, 44);
-            ADD(TNET,    1.0,  70, 60);  ADD(TDISK,  1.0,  60, 56);  ADD(TUPTIME,0.7, 30, 48);
-            ADD(TBATT,   0.7,  80, 44);
+            ADD(TNET,    1.0,  70, 60);  ADD(TDISK,  1.0,  60, 56);  ADD(TUPTIME,0.7, 30, 58);
+            ADD(TBATT,   0.3,  80, 40);   // compact battery icon — don't stretch
             break;
         case BarModeMedia:
             ADD(TMEDIA,  3.0, 100, 140); ADD(TVOL,   1.2,  80, 90);
@@ -327,7 +326,6 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     double      _anim;            // 1 = settled
     CGFloat     _tabW[BarModeCount];
     NSTimer    *_animTimer;
-    BOOL        _clockCompact;    // narrow bar → clock shows time only (set in drawRect)
 
     Tile        _tiles[40];
     int         _nTiles;
@@ -606,32 +604,23 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
         case TSC_REMIND:  [self action:@"checklist"            label:@"REMIND" in:r active:NO color:[self accent]]; break;
         case TMUTE:       [self action:_mute ? @"speaker.slash.fill" : @"speaker.wave.2.fill" label:_mute ? @"MUTED" : @"MUTE" in:r active:_mute color:[self pink]]; break;
         case TUPTIME: {
-            [self label:@"UPTIME" in:r];
-            [self t:fmtUptime(self.uptime) at:NSMakePoint(r.origin.x + 6, 14) sz:13 w:NSFontWeightBold c:[self accent]];
+            // Uptime + the current active working session (resets after a long idle gap).
+            [self t:[NSString stringWithFormat:@"up %@",  fmtUptime(self.uptime)]         at:NSMakePoint(r.origin.x + 6, 4)  sz:9 w:NSFontWeightSemibold c:[self accent]];
+            [self t:[NSString stringWithFormat:@"ses %@", fmtUptime(self.sessionSeconds)] at:NSMakePoint(r.origin.x + 6, 17) sz:9 w:NSFontWeightSemibold c:[self green]];
             break; }
         case TBATT: {
-            [self label:@"BATT" in:r];
-            [self t:[NSString stringWithFormat:@"%.0f%%", _battery.percent] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self batt:_battery.percent chg:_battery.charging]];
-            CGFloat bw = 22, bh = 11, bx = r.origin.x + 8, by = 15;
-            [[NSColor colorWithCalibratedWhite:0.7 alpha:1] setStroke];
-            NSBezierPath *body = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:2.5 yRadius:2.5]; body.lineWidth = 1; [body stroke];
-            [[NSColor colorWithCalibratedWhite:0.7 alpha:1] setFill]; NSRectFill(NSMakeRect(bx + bw + 0.5, by + bh / 2 - 2, 1.6, 4));
-            [[self batt:_battery.percent chg:_battery.charging] setFill]; NSRectFill(NSMakeRect(bx + 1.5, by + 1.5, (bw - 3) * MAX(0, MIN(1, _battery.percent / 100.0)), bh - 3));
-            if (_battery.charging) [self symbol:@"bolt.fill" in:NSMakeRect(bx, by, bw, bh) pt:8 color:[NSColor whiteColor]];
+            // Single compact icon: battery glyph with the % inside; charging bolt to its left.
+            CGFloat bw = 26, bh = 14, bx = NSMidX(r) - (bw + 2) / 2, by = (r.size.height - bh) / 2;
+            NSColor *bc = [self batt:_battery.percent chg:_battery.charging];
+            [[NSColor colorWithCalibratedWhite:0.78 alpha:1] setStroke];
+            NSBezierPath *shell = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:3 yRadius:3]; shell.lineWidth = 1.2; [shell stroke];
+            [[NSColor colorWithCalibratedWhite:0.78 alpha:1] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx + bw + 1, by + bh / 2 - 2.5, 2, 5) xRadius:1 yRadius:1] fill];
+            CGFloat innerW = (bw - 3) * MAX(0, MIN(1, _battery.percent / 100.0));
+            [[bc colorWithAlphaComponent:0.9] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx + 1.5, by + 1.5, innerW, bh - 3) xRadius:1.5 yRadius:1.5] fill];
+            [self tc:[NSString stringWithFormat:@"%.0f", _battery.percent] cx:bx + bw / 2 y:by + bh / 2 - 4.5 sz:8 w:NSFontWeightHeavy c:[NSColor whiteColor]];
+            if (_battery.charging) [self symbol:@"bolt.fill" in:NSMakeRect(bx - 9, by, 8, bh) pt:8 color:[self green]];
             break; }
-        case TCLOCK: {
-            static NSDateFormatter *tf = nil, *tfShort = nil, *df = nil;
-            if (!tf) { tf = [NSDateFormatter new]; tf.dateFormat = @"HH:mm:ss";
-                       tfShort = [NSDateFormatter new]; tfShort.dateFormat = @"HH:mm";
-                       df = [NSDateFormatter new]; df.dateFormat = @"EEE d MMM"; }
-            NSDate *now = [NSDate date];
-            if (_clockCompact) {
-                [self t:[tfShort stringFromDate:now] rx:NSMaxX(r) - 6 y:9 sz:13 w:NSFontWeightBold c:[NSColor whiteColor]];
-            } else {
-                [self t:[df stringFromDate:now] rx:NSMaxX(r) - 6 y:2 sz:7.5 w:NSFontWeightMedium c:[self dim]];
-                [self t:[tf stringFromDate:now] rx:NSMaxX(r) - 6 y:11 sz:14 w:NSFontWeightBold c:[NSColor whiteColor]];
-            }
-            break; }
+        case TCLOCK: break;   // clock removed from the bar (menu bar shows the time)
         case TSETTINGS: [self symbol:@"gearshape.fill" in:r pt:15 color:[NSColor colorWithCalibratedWhite:0.85 alpha:1]]; break;
         case TAGENT: {
             CGFloat d = 21, cx = NSMidX(r), cy = r.size.height / 2;
@@ -746,13 +735,9 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     if (self.fnMode)     { [self drawFnKeys:b];     return; }
     [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
 
-    // Right cluster, reserved from the edge so the agent orb is NEVER dropped:
-    // clock (collapses date→time→hidden) · agent. Settings lives in the menu bar,
-    // not here. Width-aware so the strip adapts to the real Touch Bar size.
+    // Right cluster: just the agent orb, pinned to the trailing edge. No clock
+    // (the menu bar shows the time) and no settings gear (it's in the menu too).
     CGFloat rx = W - kClusterPad;
-    CGFloat clockW = (W >= 900) ? kClockW : (W >= 680 ? 52 : 0);
-    _clockCompact = (clockW > 0 && clockW < kClockW);
-    if (clockW > 0) { NSRect rClk = NSMakeRect(rx - clockW, 0, clockW, H); rx -= clockW + kClusterGap; [self drawTile:(Tile){TCLOCK, rClk, 0}]; [self push:TCLOCK rect:rClk arg:0]; }
     NSRect rAg = NSMakeRect(rx - kAgentW, 0, kAgentW, H); rx -= kAgentW + kClusterGap; [self drawTile:(Tile){TAGENT, rAg, 0}]; [self push:TAGENT rect:rAg arg:0];
     CGFloat rightEdge = rx; [self divider:rightEdge];
 
