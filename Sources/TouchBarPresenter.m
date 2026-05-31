@@ -75,7 +75,6 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     Class TB = NSClassFromString(@"NSTouchBar");
     if ([NSTouchBarItem respondsToSelector:@selector(addSystemTrayItem:)]) [NSTouchBarItem addSystemTrayItem:_stripItem];
     if (_setPresence)  _setPresence(kStripID, YES);
-    if (_showCloseBox) _showCloseBox(NO);
 
     if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:systemTrayItemIdentifier:)]) {
         [NSTouchBar presentSystemModalTouchBar:_fullBar systemTrayItemIdentifier:kStripID];
@@ -86,6 +85,18 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     } else {
         _spiOK = NO; PBLog(@"Touch Bar SPI unavailable");
     }
+
+    // Hide the system close box (the round ✕ at the left edge) — it eats the
+    // left of the bar and clips our first tab. The modal shows it on present, so
+    // set it AFTER presenting and once more on the next runloop turn to be sure.
+    [self hideCloseBox];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ [self hideCloseBox]; });
+}
+
+- (void)hideCloseBox {
+    if (_showCloseBox) _showCloseBox(NO);
+    else PBLog(@"close-box SPI unavailable (DFRSystemModalShowsCloseBoxWhenFrontMost not found)");
 }
 
 - (void)detach {

@@ -338,6 +338,8 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     BOOL        _sliding;
     BOOL        _swiped;         // a swipe already fired this gesture
     CGFloat     _downX;          // for swipe detection
+    CGFloat     _swipeMaxX;      // mode-switch swipe only starts left of here (the tab zone)
+    float       _mediaSeekFrac;  // pending media scrubber position (committed on release)
     NSTimeInterval _lastTouchT;  // suppress mouse synthesized right after a Touch Bar touch
     BOOL        _agentPressing;  // agent orb press in progress
     BOOL        _notePressing;   // Focus side-note tile held (recording)
@@ -810,6 +812,7 @@ static int viewCount(TileType t) {
         tx += _tabW[m] + 2;
     }
     [self divider:tx + 2];
+    _swipeMaxX = tx + 4;   // swipe-to-switch is only recognised left of here (the tab zone)
 
     // content area between tabs and right cluster
     NSRect content = NSMakeRect(tx + 4, 0, MAX(40, rightEdge - (tx + 4) - 4), H);
@@ -855,19 +858,33 @@ static int viewCount(TileType t) {
     CGFloat iconW = 20;
     if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
     else if (t->type == TVOL && p.x >= t->rect.origin.x + iconW) { _activeSlider = TVOL; _sliding = YES; [self.actionDelegate barSetVolume:[self sliderValueFor:t at:p]]; }
+    else if (t->type == TMEDIA && p.x >= t->rect.origin.x + 4 + 3 * (22 + 2)) {   // scrubber region → seek (drag, commit on release)
+        _activeSlider = TMEDIA; _sliding = YES; _mediaSeekFrac = [self mediaSeekFracFor:t at:p];
+    }
     else { [self fireTap:t at:p]; }   // fire on press — reliable
+}
+
+// Fraction along the now-playing scrubber for a point (matches the bar drawn in drawTile TMEDIA).
+- (float)mediaSeekFracFor:(Tile *)t at:(NSPoint)p {
+    CGFloat x0 = t->rect.origin.x + 4, bs = 22, gap = 2;
+    CGFloat tx = x0 + 3 * (bs + gap) + 4, tw = NSMaxX(t->rect) - tx - 4;
+    CGFloat bx = tx + 26, bw = tw - 52;
+    return bw > 0 ? (float)MAX(0, MIN(1, (p.x - bx) / bw)) : 0;
 }
 - (void)moveAt:(NSPoint)p {
     if (_agentPressing || _notePressing) return;   // holding orb/note (walkie-talkie) — ignore drags/swipes
     if (_sliding && _activeSlider >= 0) {
         for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
-            float v = [self sliderValueFor:&_tiles[i] at:p];
-            if (_activeSlider == TVOL) [self.actionDelegate barSetVolume:v]; else [self.actionDelegate barSetBrightness:v];
+            if (_activeSlider == TMEDIA) { _mediaSeekFrac = [self mediaSeekFracFor:&_tiles[i] at:p]; }   // commit on release
+            else { float v = [self sliderValueFor:&_tiles[i] at:p];
+                   if (_activeSlider == TVOL) [self.actionDelegate barSetVolume:v]; else [self.actionDelegate barSetBrightness:v]; }
             break;
         }
         return;
     }
-    if (!_swiped && fabs(p.x - _downX) > 55) {   // horizontal swipe -> switch modes (wraps)
+    // Mode-switch swipe is only recognised when it STARTS in the left tab zone, so
+    // dragging the song scrubber / sliders never flips the panel by accident.
+    if (!_swiped && _downX <= _swipeMaxX && fabs(p.x - _downX) > 55) {   // horizontal swipe -> switch modes (wraps)
         _swiped = YES;
         NSInteger nm = (p.x - _downX) < 0 ? (_mode + 1) % BarModeCount : (_mode + BarModeCount - 1) % BarModeCount;
         [self setMode:nm animated:self.animateModeSwitch]; [self.actionDelegate barDidChangeMode:nm];
@@ -880,6 +897,7 @@ static int viewCount(TileType t) {
         [self.actionDelegate barAgentUp:hold];
     }
     if (_notePressing) { _notePressing = NO; [self.actionDelegate barNoteUp]; }
+    if (_sliding && _activeSlider == TMEDIA) [self.actionDelegate barMediaSeek:_mediaSeekFrac];   // commit the scrub
     _sliding = NO; _activeSlider = -1;
 }
 
