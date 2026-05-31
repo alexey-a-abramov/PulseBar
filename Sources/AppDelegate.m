@@ -240,6 +240,13 @@
     } else { _topBuf[0] = '\0'; _topCPU = 0; }
     _tick++;
 
+    // Periodic safety net for the system close box. App-activation usually fires
+    // NSWorkspaceDidActivateApplicationNotification (handled in activeAppChanged:),
+    // but macOS can also re-decorate our background modal with its ✕ — shifting the
+    // content and hiding the agent orb — without a notification we observe. Re-assert
+    // every ~10s to reclaim the bar. Skipped under test (PULSEBAR_SELFQUIT).
+    if (_tick % 10 == 0 && getenv("PULSEBAR_SELFQUIT") == NULL) [self reassertBar];
+
     NowPlaying np; memset(&np, 0, sizeof(np));
     float vol = 0, bright = 0; BOOL mute = NO;
     if (med) { CtlMediaRefresh(); np = CtlNowPlaying(); vol = CtlGetVolume(); mute = CtlGetMute(); bright = CtlGetBrightness(); }
