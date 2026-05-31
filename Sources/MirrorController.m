@@ -18,9 +18,10 @@
 - (instancetype)initWithActionDelegate:(id<BarActionDelegate>)delegate pomodoro:(Pomodoro *)pomo mode:(NSInteger)mode {
     if ((self = [super init])) {
         _persist = YES;
+        CGFloat barW = 1004;   // match the live Touch Bar app-area width
         CGFloat maxW = [NSScreen mainScreen].visibleFrame.size.width - 80;
-        CGFloat scale = MIN(1.5, maxW / 1085.0); if (scale < 0.9) scale = 0.9;
-        CGFloat w = 1085 * scale, h = 30 * scale;
+        CGFloat scale = MIN(1.5, maxW / barW); if (scale < 0.9) scale = 0.9;
+        CGFloat w = barW * scale, h = 30 * scale;
         NSPanel *p = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, w, h)
             styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskNonactivatingPanel)
             backing:NSBackingStoreBuffered defer:NO];
@@ -36,7 +37,7 @@
         _bar.animateModeSwitch = YES;
         [_bar setMode:mode animated:NO];
         [container addSubview:_bar];
-        _bar.bounds = NSMakeRect(0, 0, 1085, 30);   // bounds < frame → scales the drawing up
+        _bar.bounds = NSMakeRect(0, 0, barW, 30);   // bounds < frame → scales the drawing up
         p.contentView = container;
         _panel = p;
     }

@@ -12,11 +12,10 @@
 NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
 
 // Right-cluster geometry (drawn in drawRect:): the fixed-width controls pinned
-// to the trailing edge — clock, settings gear, agent orb — plus the gap between
-// them and the trailing padding. Each step-offset is the control width + gap.
+// to the trailing edge — clock and agent orb — plus the gap between them and the
+// trailing padding. (Settings now lives in the menu bar, not the cluster.)
 static const CGFloat kClusterPad = 4;    // trailing padding before the cluster
 static const CGFloat kClockW     = 86;
-static const CGFloat kSettingsW  = 24;
 static const CGFloat kAgentW     = 32;
 static const CGFloat kClusterGap = 2;    // gap between adjacent cluster controls
 
@@ -718,13 +717,12 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
     [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
 
     // Right cluster, reserved from the edge so the agent orb is NEVER dropped:
-    // clock (collapses date→time→hidden) · settings · agent. Width-aware so the
-    // whole strip adapts to the real Touch Bar size.
+    // clock (collapses date→time→hidden) · agent. Settings lives in the menu bar,
+    // not here. Width-aware so the strip adapts to the real Touch Bar size.
     CGFloat rx = W - kClusterPad;
     CGFloat clockW = (W >= 900) ? kClockW : (W >= 680 ? 52 : 0);
     _clockCompact = (clockW > 0 && clockW < kClockW);
     if (clockW > 0) { NSRect rClk = NSMakeRect(rx - clockW, 0, clockW, H); rx -= clockW + kClusterGap; [self drawTile:(Tile){TCLOCK, rClk, 0}]; [self push:TCLOCK rect:rClk arg:0]; }
-    if (W >= 560)   { NSRect rSet = NSMakeRect(rx - kSettingsW, 0, kSettingsW, H); rx -= kSettingsW + kClusterGap; [self drawTile:(Tile){TSETTINGS, rSet, 0}]; [self push:TSETTINGS rect:rSet arg:0]; }
     NSRect rAg = NSMakeRect(rx - kAgentW, 0, kAgentW, H); rx -= kAgentW + kClusterGap; [self drawTile:(Tile){TAGENT, rAg, 0}]; [self push:TAGENT rect:rAg arg:0];
     CGFloat rightEdge = rx; [self divider:rightEdge];
 

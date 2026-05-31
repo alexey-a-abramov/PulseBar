@@ -136,9 +136,8 @@
 #pragma mark - bars
 
 - (void)buildBars {
-    // Full Touch Bar is ~1085pt; the app region with Control Strip shown is ~1004pt.
-    BOOL full = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar];
-    self.barView = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, full ? 1085 : 1004, 30)];
+    // The Touch Bar app area is ~1004pt; the presenter pins this width (see note there).
+    self.barView = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, 1004, 30)];
     self.barView.actionDelegate = self;
     self.barView.pomodoro = self.pomo;
     self.barView.animateModeSwitch = NO;   // don't hammer the live DFR with a 60fps transition
@@ -147,15 +146,15 @@
 
 - (void)buildStatusItem {
     self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
-    // Branded "pulse bars" mark (audio-level look), drawn as a template image.
-    NSImage *icon = [NSImage imageWithSize:NSMakeSize(20, 16) flipped:NO drawingHandler:^BOOL(NSRect r) {
-        [[NSColor blackColor] set];
-        CGFloat heights[6] = { 5, 9, 14, 16, 8, 4 }, bw = 2.0, gap = 1.4, x = 1.5;
-        for (int i = 0; i < 6; i++) {
-            CGFloat h = heights[i];
-            [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x, (16 - h) / 2, bw, h) xRadius:1 yRadius:1] fill];
-            x += bw + gap;
-        }
+    // Branded "pulse" mark: an ECG/heartbeat line, drawn as a template image.
+    NSImage *icon = [NSImage imageWithSize:NSMakeSize(22, 16) flipped:NO drawingHandler:^BOOL(NSRect r) {
+        CGFloat m = 7.5;   // baseline
+        NSPoint pts[] = { {1,m}, {6,m}, {7.5,m+2}, {9,m-3.5}, {10.5,m+6}, {12,m-5}, {13.5,m}, {16,m}, {21,m} };
+        NSBezierPath *p = [NSBezierPath bezierPath];
+        p.lineWidth = 1.6; p.lineCapStyle = NSLineCapStyleRound; p.lineJoinStyle = NSLineJoinStyleRound;
+        [p moveToPoint:pts[0]];
+        for (int i = 1; i < (int)(sizeof(pts) / sizeof(pts[0])); i++) [p lineToPoint:pts[i]];
+        [[NSColor blackColor] set]; [p stroke];
         return YES;
     }];
     icon.template = YES;

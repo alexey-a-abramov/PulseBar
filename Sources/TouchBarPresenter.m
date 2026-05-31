@@ -28,10 +28,12 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     if ((self = [super init])) {
         [self loadDFR];
 
-        // Full Touch Bar is ~1085pt; the app region with Control Strip shown is ~1004pt.
-        BOOL full = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar];
+        // The visible Touch Bar app area is ~1004pt. Even in full takeover, the
+        // system-tray item occupies the right edge, so the modal content stays
+        // ~1004 — sizing wider just pushes the right cluster off-screen. (This is
+        // exactly the width the layout editor previews, so live == editor.)
         content.translatesAutoresizingMaskIntoConstraints = NO;
-        _widthC = [content.widthAnchor constraintEqualToConstant:(full ? 1085 : 1004)];
+        _widthC = [content.widthAnchor constraintEqualToConstant:1004];
         _widthC.active = YES;
         [content.heightAnchor constraintEqualToConstant:30].active = YES;
 
@@ -122,8 +124,7 @@ static NSString *pbRun(NSString *path, NSArray<NSString *> *args) {
     } else {
         [self writeTBMode:([ud stringForKey:PBKeyTBBackup] ?: @"appWithControlStrip")];
     }
-    [ud setBool:on forKey:PBKeyFullBar];
-    _widthC.constant = on ? 1085 : 1004;   // fill the freed Control-Strip space
+    [ud setBool:on forKey:PBKeyFullBar];   // takeover toggles Control-Strip persistence, not width
     [self restartTB];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.3 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ [self attach]; });
