@@ -25,7 +25,7 @@ typedef NS_ENUM(NSInteger, TileType) {
     TCPU, TMEM, TGPU, TNET, TDISK, TUPTIME,
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
     TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
-    TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND, TLAUNCH,
+    TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND, TLAUNCH, TSESSION,
     TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TAPP_HIDE, TAPP_QUIT, TTAB
 };
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
@@ -82,9 +82,11 @@ static NSColor *modePastel(NSInteger m) {
 //   prio   — higher survives longer; lowest-prio tiles are hidden first when
 //            the content area can't fit everyone's minW.
 //   minW   — narrowest width at which the tile is still legible.
+//   maxW   — cap on width (0 = uncapped). Capped tiles stay compact; the freed
+//            space becomes right margin, so the row never stretches to the edge.
 //   arg    — opaque per-tile index (e.g. which launcher app); 0 for most tiles.
 // Array order is the on-screen left→right order; prio is independent of it.
-typedef struct { TileType type; CGFloat weight; int prio; CGFloat minW; int arg; } TileDef;
+typedef struct { TileType type; CGFloat weight; int prio; CGFloat minW; CGFloat maxW; int arg; } TileDef;
 
 // The Actions mode is a colourful app-launcher palette. Each entry shows the
 // real app icon (via PBAppIndex + NSWorkspace) and launches it on tap. `cmd`
@@ -116,20 +118,21 @@ static NSImage *launcherIcon(const char *queryC) {
 
 static int tilesForMode(NSInteger m, TileDef *out) {
     int n = 0;
-    #define ADD(t, wt, pr, mn)  do { out[n++] = (TileDef){(t), (wt), (pr), (mn), 0}; } while (0)
-    #define ADDL(ix, wt, pr, mn) do { out[n++] = (TileDef){TLAUNCH, (wt), (pr), (mn), (ix)}; } while (0)
+    #define ADD(t, wt, pr, mn)       do { out[n++] = (TileDef){(t), (wt), (pr), (mn), 0, 0}; } while (0)
+    #define ADDM(t, wt, pr, mn, mx)  do { out[n++] = (TileDef){(t), (wt), (pr), (mn), (mx), 0}; } while (0)
+    #define ADDL(ix, wt, pr, mn)     do { out[n++] = (TileDef){TLAUNCH, (wt), (pr), (mn), 0, (ix)}; } while (0)
     switch (m) {
-        case BarModeSystem:
-            ADD(TCPU,    1.6, 100, 64);  ADD(TMEM,   1.05, 90, 56);  ADD(TGPU,   0.7, 45, 44);
-            ADD(TNET,    1.0,  70, 60);  ADD(TDISK,  1.0,  60, 56);  ADD(TUPTIME,0.7, 30, 58);
-            ADD(TBATT,   0.3,  80, 40);   // compact battery icon — don't stretch
+        case BarModeSystem:   // capped widths → compact chips + a safe right margin (never cut at the battery)
+            ADDM(TCPU,    1.6, 100, 64, 120);  ADDM(TMEM,   1.05, 90, 56, 112);  ADDM(TGPU,   0.7, 45, 44, 78);
+            ADDM(TNET,    1.0,  70, 60, 100);  ADDM(TDISK,  1.0,  60, 56, 104);  ADDM(TUPTIME,0.7, 30, 52, 72);
+            ADDM(TBATT,   0.3,  80, 40, 46);
             break;
         case BarModeMedia:
             ADD(TMEDIA,  3.0, 100, 140); ADD(TVOL,   1.2,  80, 90);
             break;
         case BarModeProductivity:
-            ADD(TPOMO,   1.5, 100, 80);  ADD(TCAFFEINE, 0.85, 80, 52);
-            ADD(TSC_NOTE,0.8,  60, 46);  ADD(TSC_REMIND,0.8,  50, 46);  ADD(TSC_LOCK, 0.8, 70, 46);
+            ADDM(TPOMO,   1.5, 100, 80, 150);  ADDM(TSESSION, 0.9, 92, 60, 84);  ADDM(TCAFFEINE, 0.85, 80, 52, 64);
+            ADDM(TSC_NOTE,0.8,  60, 46, 56);   ADDM(TSC_REMIND,0.8, 50, 46, 56);  ADDM(TSC_LOCK, 0.8, 70, 46, 56);
             break;
         case BarModeClassic:
             ADD(TBRIGHT, 1.3,  90, 90);  ADD(TVOL,   1.3, 100, 90);
@@ -141,6 +144,7 @@ static int tilesForMode(NSInteger m, TileDef *out) {
             break;
     }
     #undef ADD
+    #undef ADDM
     #undef ADDL
     return n;
 }
@@ -156,7 +160,7 @@ static NSString *tileName(TileType t) {
         case TSC_LOCK: return @"Lock";     case TSC_SLEEP: return @"Sleep";   case TSC_SHOT: return @"Screenshot";
         case TSC_DARK: return @"Dark Mode";case TSC_MISSION: return @"Mission Control";
         case TSC_LAUNCH: return @"Launchpad"; case TSC_ACTIVITY: return @"Activity";
-        case TLAUNCH: return @"App";
+        case TLAUNCH: return @"App"; case TSESSION: return @"Session";
         default: return @"—";
     }
 }
@@ -173,7 +177,7 @@ static NSString *tileToken(TileType t) {
         case TCAFFEINE: return @"caffeine";case TSC_LOCK: return @"sc_lock";case TSC_SLEEP: return @"sc_sleep";
         case TSC_SHOT: return @"sc_shot";  case TSC_DARK: return @"sc_dark";case TSC_MISSION: return @"sc_mission";
         case TSC_NOTE: return @"sc_note";  case TSC_LAUNCH: return @"sc_launch"; case TSC_ACTIVITY: return @"sc_activity";
-        case TSC_REMIND: return @"sc_remind"; case TLAUNCH: return @"launch";
+        case TSC_REMIND: return @"sc_remind"; case TLAUNCH: return @"launch"; case TSESSION: return @"sess";
         default: return [NSString stringWithFormat:@"t%d", (int)t];
     }
 }
@@ -345,7 +349,7 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
 
 // How many alternate views each metric tile cycles through (tap to switch).
 static int viewCount(TileType t) {
-    switch (t) { case TCPU: case TMEM: case TGPU: case TNET: case TDISK: return 2; default: return 1; }
+    switch (t) { case TCPU: case TMEM: case TGPU: case TNET: case TDISK: case TUPTIME: return 2; default: return 1; }
 }
 // CPU's view doubles as the legacy "show cores" toggle (used by the menu item).
 - (BOOL)showCores { return _view[TCPU] != 0; }
@@ -643,9 +647,18 @@ static int viewCount(TileType t) {
         case TSC_REMIND:  [self action:@"checklist"            label:@"REMIND" in:r active:NO color:[self accent]]; break;
         case TMUTE:       [self action:_mute ? @"speaker.slash.fill" : @"speaker.wave.2.fill" label:_mute ? @"MUTED" : @"MUTE" in:r active:_mute color:[self pink]]; break;
         case TUPTIME: {
-            // Uptime + the current active working session (resets after a long idle gap).
-            [self t:[NSString stringWithFormat:@"up %@",  fmtUptime(self.uptime)]         at:NSMakePoint(r.origin.x + 6, 4)  sz:9 w:NSFontWeightSemibold c:[self accent]];
-            [self t:[NSString stringWithFormat:@"ses %@", fmtUptime(self.sessionSeconds)] at:NSMakePoint(r.origin.x + 6, 17) sz:9 w:NSFontWeightSemibold c:[self green]];
+            // One chip, tap to switch between total uptime and the active session.
+            if (_view[TUPTIME] == 0) {
+                [self label:@"UPTIME" in:r];
+                [self t:fmtUptime(self.uptime) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self accent]];
+            } else {
+                [self label:@"SESSION" in:r];
+                [self t:fmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
+            }
+            break; }
+        case TSESSION: {   // dedicated active-working-session chip (e.g. for Focus mode)
+            [self label:@"SESSION" in:r];
+            [self t:fmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
             break; }
         case TBATT: {
             // Single compact icon: battery glyph with the % inside; charging bolt to its left.
@@ -703,6 +716,7 @@ static int viewCount(TileType t) {
     CGFloat extra = MAX(0, avail - sumMin), x = area.origin.x + pad;
     for (int i = 0; i < nvis; i++) {
         CGFloat tw = vis[i].minW + extra * vis[i].weight / sumW;
+        if (vis[i].maxW > 0 && tw > vis[i].maxW) tw = vis[i].maxW;   // capped tiles stay compact (freed space → right margin)
         NSRect r = NSMakeRect(x, 0, tw, area.size.height);
         if (draw) [self drawTile:(Tile){vis[i].type, r, vis[i].arg}];
         if (record) [self push:vis[i].type rect:r arg:vis[i].arg];
@@ -885,7 +899,7 @@ static int viewCount(TileType t) {
     switch (t->type) {
         case TTAB: { NSInteger target = (t->arg == _mode) ? _prevMode : t->arg;   // tap the active pill -> jump to your last mode
                      [self setMode:target animated:self.animateModeSwitch]; [d barDidChangeMode:target]; break; }
-        case TCPU: case TMEM: case TGPU: case TNET: case TDISK:   // tap a metric to cycle its view
+        case TCPU: case TMEM: case TGPU: case TNET: case TDISK: case TUPTIME:   // tap a metric to cycle its view
             _view[t->type] = (_view[t->type] + 1) % viewCount(t->type); [self setNeedsDisplay:YES]; break;
         case TSETTINGS: [d barOpenSettings]; break;
         case TAGENT:    [d barOpenAgent]; break;
