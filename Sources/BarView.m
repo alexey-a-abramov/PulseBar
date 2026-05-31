@@ -66,6 +66,17 @@ static NSString *modeLabel(NSInteger m) {
     }
     return @"";
 }
+// Soft pastel accent per mode — used to fill the active accordion chip.
+static NSColor *modePastel(NSInteger m) {
+    switch (m) {
+        case BarModeSystem:       return [NSColor colorWithSRGBRed:0.66 green:0.83 blue:0.99 alpha:1];  // sky
+        case BarModeMedia:        return [NSColor colorWithSRGBRed:0.99 green:0.74 blue:0.82 alpha:1];  // rose
+        case BarModeProductivity: return [NSColor colorWithSRGBRed:0.99 green:0.85 blue:0.66 alpha:1];  // peach
+        case BarModeClassic:      return [NSColor colorWithSRGBRed:0.70 green:0.92 blue:0.86 alpha:1];  // mint
+        case BarModeShortcuts:    return [NSColor colorWithSRGBRed:0.82 green:0.77 blue:0.99 alpha:1];  // lavender
+    }
+    return [NSColor colorWithSRGBRed:0.66 green:0.83 blue:0.99 alpha:1];
+}
 // Layout spec for one tile in a mode's content area.
 //   weight — share of leftover width once every visible tile has its minW.
 //   prio   — higher survives longer; lowest-prio tiles are hidden first when
@@ -124,9 +135,9 @@ static int tilesForMode(NSInteger m, TileDef *out) {
             ADD(TBRIGHT, 1.3,  90, 90);  ADD(TVOL,   1.3, 100, 90);
             ADD(TMUTE,   0.7,  70, 40);  ADD(TMEDIA, 1.8,  80, 120);
             break;
-        case BarModeShortcuts:   // app-launcher palette + a couple of utilities
-            for (int i = 0; i < gLauncherCount; i++) ADDL(i, 1, 90 - i, 50);   // apps survive longest, left→right
-            ADD(TSC_SHOT, 0.9, 40, 44); ADD(TSC_LOCK, 0.9, 35, 44);
+        case BarModeShortcuts:   // app-launcher palette: dense, left-packed (weight 0 = no stretch)
+            for (int i = 0; i < gLauncherCount; i++) ADDL(i, 0, 90 - i, 42);   // ~icon + ~1.3·icon pitch
+            ADD(TSC_SHOT, 0, 40, 42); ADD(TSC_LOCK, 0, 35, 42);
             break;
     }
     #undef ADD
@@ -658,10 +669,11 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 - (void)drawTab:(NSInteger)m rect:(NSRect)r active:(BOOL)active {
     NSRect pill = NSInsetRect(r, 1, 3);
     if (active) {
-        [[self accent] setFill];
+        NSColor *ink = [NSColor colorWithCalibratedWhite:0.12 alpha:1];   // dark text on the soft pastel
+        [modePastel(m) setFill];
         [[NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6] fill];
-        [self symbol:modeIcon(m) in:NSMakeRect(r.origin.x + 5, 0, 16, r.size.height) pt:12 color:[NSColor blackColor]];
-        if (r.size.width > 34) [self t:modeLabel(m) at:NSMakePoint(r.origin.x + 23, r.size.height / 2 - 5) sz:8.5 w:NSFontWeightHeavy c:[NSColor blackColor]];
+        [self symbol:modeIcon(m) in:NSMakeRect(r.origin.x + 5, 0, 16, r.size.height) pt:12 color:ink];
+        if (r.size.width > 34) [self t:modeLabel(m) at:NSMakePoint(r.origin.x + 23, r.size.height / 2 - 5) sz:8.5 w:NSFontWeightHeavy c:ink];
     } else {
         [[NSColor colorWithCalibratedWhite:1 alpha:0.07] setFill];
         [[NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6] fill];

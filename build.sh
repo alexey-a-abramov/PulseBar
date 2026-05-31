@@ -57,7 +57,15 @@ clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
 
 # Ad-hoc code signature (private API needs no entitlements; this just keeps
 # Gatekeeper/launchd happy for a locally-built bundle).
-codesign --force --sign - "$APPDIR" >/dev/null 2>&1 && echo "==> ad-hoc signed" || echo "==> (codesign skipped)"
+# Prefer a STABLE local identity ("PulseBar Local Signing", a self-signed
+# codesigning cert) so macOS TCC keeps Accessibility/Mic/Speech grants across
+# rebuilds. Falls back to ad-hoc (which re-prompts every build) if it's absent.
+SIGN_ID="PulseBar Local Signing"
+if security find-identity -p codesigning 2>/dev/null | grep -q "$SIGN_ID"; then
+  codesign --force --sign "$SIGN_ID" "$APPDIR" >/dev/null 2>&1 && echo "==> signed ($SIGN_ID — stable identity)" || echo "==> (codesign failed)"
+else
+  codesign --force --sign - "$APPDIR" >/dev/null 2>&1 && echo "==> ad-hoc signed (grants will re-prompt each build; see README to create a stable identity)" || echo "==> (codesign skipped)"
+fi
 
 cp "$MACOS/$APP_NAME" "$BUILD/$APP_NAME"   # bare binary for quick CLI launch
 
