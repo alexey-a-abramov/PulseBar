@@ -290,6 +290,22 @@ static int packVisible(NSInteger mode, CGFloat avail, TileDef *out) {
 // Lightweight, env-gated tracing (PULSEBAR_DEBUG=1) for diagnosing input.
 static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_DEBUG") ? 1 : 0; return v; }
 
+// Cached, NEVER-nil monospaced font. +[NSFont monospacedSystemFontOfSize:weight:]
+// can intermittently return nil under redraw pressure; inserting that nil into a
+// text-attributes dictionary throws (and AppKit turns it into a fatal crash
+// during the layer flush — the real cause of the signal-5 crashes). Caching also
+// avoids recreating a font on every glyph draw.
+static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
+    static NSMutableDictionary<NSString *, NSFont *> *cache;
+    if (!cache) cache = [NSMutableDictionary dictionary];
+    NSString *key = [NSString stringWithFormat:@"%.2f/%.3f", sz, w];
+    NSFont *f = cache[key];
+    if (f) return f;
+    f = [NSFont monospacedSystemFontOfSize:sz weight:w] ?: [NSFont systemFontOfSize:sz] ?: [NSFont systemFontOfSize:12];
+    if (f) cache[key] = f;
+    return f;
+}
+
 @implementation BarView {
     double      _cpu, _gpu, _topCPU;
     double      _cores[128];
@@ -412,12 +428,12 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 - (NSColor *)green { return [NSColor colorWithSRGBRed:0.30 green:0.82 blue:0.45 alpha:1]; }
 
 - (void)t:(NSString *)s at:(NSPoint)p sz:(CGFloat)sz w:(NSFontWeight)w c:(NSColor *)c {
-    [s drawAtPoint:p withAttributes:@{ NSFontAttributeName:[NSFont monospacedSystemFontOfSize:sz weight:w], NSForegroundColorAttributeName:c }]; }
+    [s drawAtPoint:p withAttributes:@{ NSFontAttributeName:monoFont(sz, w), NSForegroundColorAttributeName:(c ?: NSColor.whiteColor) }]; }
 - (void)t:(NSString *)s rx:(CGFloat)rx y:(CGFloat)y sz:(CGFloat)sz w:(NSFontWeight)w c:(NSColor *)c {
-    NSDictionary *a = @{ NSFontAttributeName:[NSFont monospacedSystemFontOfSize:sz weight:w], NSForegroundColorAttributeName:c };
+    NSDictionary *a = @{ NSFontAttributeName:monoFont(sz, w), NSForegroundColorAttributeName:(c ?: NSColor.whiteColor) };
     [s drawAtPoint:NSMakePoint(rx - [s sizeWithAttributes:a].width, y) withAttributes:a]; }
 - (void)tc:(NSString *)s cx:(CGFloat)cx y:(CGFloat)y sz:(CGFloat)sz w:(NSFontWeight)w c:(NSColor *)c {
-    NSDictionary *a = @{ NSFontAttributeName:[NSFont monospacedSystemFontOfSize:sz weight:w], NSForegroundColorAttributeName:c };
+    NSDictionary *a = @{ NSFontAttributeName:monoFont(sz, w), NSForegroundColorAttributeName:(c ?: NSColor.whiteColor) };
     [s drawAtPoint:NSMakePoint(cx - [s sizeWithAttributes:a].width / 2, y) withAttributes:a]; }
 - (void)label:(NSString *)s in:(NSRect)r { [self t:s at:NSMakePoint(r.origin.x + 6, 2) sz:7.5 w:NSFontWeightBold c:[self dim]]; }
 
@@ -433,7 +449,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 }
 
 - (void)clip:(NSString *)s at:(NSPoint)p sz:(CGFloat)sz w:(NSFontWeight)w c:(NSColor *)c maxW:(CGFloat)maxW {
-    NSDictionary *a = @{ NSFontAttributeName:[NSFont monospacedSystemFontOfSize:sz weight:w], NSForegroundColorAttributeName:c };
+    NSDictionary *a = @{ NSFontAttributeName:monoFont(sz, w), NSForegroundColorAttributeName:(c ?: NSColor.whiteColor) };
     NSString *str = s;
     while ([str sizeWithAttributes:a].width > maxW && str.length > 1) str = [[str substringToIndex:str.length - 2] stringByAppendingString:@"…"];
     [str drawAtPoint:p withAttributes:a];
@@ -498,7 +514,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             // "swap NG" only when the full label fits before the right-aligned % (else dropped).
             CGFloat swapX = r.origin.x + 34, swapMaxW = (NSMaxX(r) - 6 - 32) - swapX;
             NSString *swapStr = [NSString stringWithFormat:@"swap %.0fG", toGB(_mem.swapUsedBytes)];
-            NSDictionary *swA = @{ NSFontAttributeName:[NSFont monospacedSystemFontOfSize:6.5 weight:NSFontWeightBold] };
+            NSDictionary *swA = @{ NSFontAttributeName:monoFont(6.5, NSFontWeightBold) };
             if (_mem.swapUsedBytes > 0 && [swapStr sizeWithAttributes:swA].width <= swapMaxW)
                 [self t:swapStr at:NSMakePoint(swapX, 3) sz:6.5 w:NSFontWeightBold c:[NSColor colorWithSRGBRed:1 green:0.60 blue:0.20 alpha:1]];
             [self t:[NSString stringWithFormat:@"%.0f%%", _mem.usedPct] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self load:_mem.usedPct]];
