@@ -173,7 +173,10 @@
     icon.template = YES;
     self.statusItem.button.image = icon;
     NSMenu *menu = [[NSMenu alloc] init];
-    [[menu addItemWithTitle:@"PulseBar — live system monitor" action:nil keyEquivalent:@""] setEnabled:NO];
+    NSString *ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"?";
+    NSString *bld = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"?";
+    NSString *header = [NSString stringWithFormat:@"PulseBar — system monitor · v%@ (build %@)", ver, bld];
+    [[menu addItemWithTitle:header action:nil keyEquivalent:@""] setEnabled:NO];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Ask the Agent…"          action:@selector(barOpenAgent)   keyEquivalent:@"a"];
     [menu addItemWithTitle:@"Settings…"               action:@selector(showSettings)   keyEquivalent:@","];

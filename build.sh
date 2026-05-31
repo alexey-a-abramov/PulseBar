@@ -7,11 +7,13 @@ set -euo pipefail
 
 APP_NAME="PulseBar"
 BUNDLE_ID="com.fun.pulsebar"
+VERSION="1.2.0"                 # marketing version (CFBundleShortVersionString)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SRC="$ROOT/Sources"
 BUILD="$ROOT/build"
 APPDIR="$BUILD/$APP_NAME.app"
 MACOS="$APPDIR/Contents/MacOS"
+BUILD_NUM="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 1)"   # auto-increments with each commit
 
 echo "==> Building $APP_NAME"
 rm -rf "$BUILD"
@@ -27,8 +29,8 @@ cat > "$APPDIR/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>$APP_NAME</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUILD_NUM</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>LSUIElement</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
