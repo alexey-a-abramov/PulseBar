@@ -27,7 +27,7 @@ echo "------------------------------------------------------------"
 echo " UNIT TESTS — layout engine (priority hiding + overrides)"
 echo "------------------------------------------------------------"
 clang -fobjc-arc -O0 -isysroot "$SDK" \
-  "$TESTS/layout_test.m" "$SRC/BarView.m" "$SRC/PBDefaults.m" "$SRC/AppIndex.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" \
+  "$TESTS/layout_test.m" "$SRC/BarView.m" "$SRC/PBDefaults.m" "$SRC/AppIndex.m" "$SRC/Log.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" \
   -framework AppKit -framework Foundation -framework CoreFoundation -framework IOKit \
   -framework QuartzCore -framework CoreGraphics -framework CoreAudio -framework ApplicationServices \
   -o "$BUILD/layout_test" || { echo "compile failed"; exit 1; }

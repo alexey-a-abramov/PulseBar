@@ -25,6 +25,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barMediaPlayPause;
 - (void)barMediaNext;
 - (void)barMediaPrev;
+- (void)barMediaSeek:(float)fraction;   // tap the progress bar to jump (0..1)
 - (void)barTogglePomodoro;
 - (void)barToggleCaffeine;
 - (void)barRunShortcut:(NSString *)action;

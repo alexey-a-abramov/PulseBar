@@ -2,6 +2,7 @@
 //  AgentWindowController.m — compact, polished chat window for the agent.
 //
 #import "AgentWindowController.h"
+#import "Log.h"
 #import <Speech/Speech.h>
 #import <AVFoundation/AVFoundation.h>
 
@@ -66,6 +67,7 @@
 }
 
 - (void)drawRect:(NSRect)dirty {
+  @try {
     NSMutableArray *rects = [NSMutableArray array];
     [self layoutInto:rects width:NSWidth(self.bounds)];
     for (NSUInteger i = 0; i < _msgs.count && i < rects.count; i++) {
@@ -86,6 +88,7 @@
         [m[@"text"] drawInRect:NSMakeRect(r.origin.x + 9, r.origin.y + 17, r.size.width - 18, r.size.height - 20)
                 withAttributes:@{ NSFontAttributeName:self.bodyFont, NSForegroundColorAttributeName:[NSColor labelColor], NSParagraphStyleAttributeName:ps }];
     }
+  } @catch (NSException *e) { PBLog(@"BubbleView drawRect exception: %@ — %@", e.name, e.reason); }
 }
 - (NSColor *)acc { return [NSColor colorWithSRGBRed:0.36 green:0.55 blue:0.98 alpha:1]; }
 @end

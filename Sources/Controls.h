@@ -31,6 +31,7 @@ NowPlaying CtlNowPlaying(void);      // last-known Now Playing
 void       CtlMediaPlayPause(void);
 void       CtlMediaNext(void);
 void       CtlMediaPrev(void);
+void       CtlMediaSeek(float fraction);   // jump to fraction [0,1] of the current track
 
 // Preferred media app controlled via AppleScript (default "Spotify"; also "Music").
 void       CtlSetMediaApp(NSString *app);

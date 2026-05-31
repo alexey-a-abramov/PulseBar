@@ -8,6 +8,7 @@
 #import "Pomodoro.h"
 #import "PBDefaults.h"
 #import "AppIndex.h"
+#import "Log.h"
 
 NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
 
@@ -721,6 +722,7 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
 }
 
 - (void)drawRect:(NSRect)dirty {
+  @try {
     NSRect b = self.bounds; CGFloat W = b.size.width, H = b.size.height;
     [[NSColor colorWithCalibratedWhite:0.035 alpha:1] setFill]; NSRectFill(b);
     _nTiles = 0;
@@ -761,6 +763,11 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
         [NSGraphicsContext restoreGraphicsState];
         [self modeContent:_mode in:content draw:NO record:YES];   // hit rects for current mode
     }
+  } @catch (NSException *e) {
+    // A drawing exception here would otherwise surface during the CATransaction
+    // flush as a hard crash (signal 5). Log the reason and skip the frame.
+    PBLog(@"drawRect exception (mode %ld): %@ — %@", (long)_mode, e.name, e.reason);
+  }
 }
 
 #pragma mark - hit testing
@@ -862,7 +869,15 @@ static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_D
             if (p.x < x0 + bs) [d barMediaPrev];
             else if (p.x < x0 + 2 * (bs + gap)) [d barMediaPlayPause];
             else if (p.x < x0 + 3 * (bs + gap)) [d barMediaNext];
-            else [d barMediaPlayPause];   // tapping the track area also toggles play
+            else {
+                // Track area: tapping on/after the progress bar seeks; else toggles play.
+                CGFloat tx = x0 + 3 * (bs + gap) + 4, tw = NSMaxX(t->rect) - tx - 4;
+                CGFloat bx = tx + 26, bw = tw - 52;   // must match the scrubber in drawTile TMEDIA
+                if (_npDuration > 1 && bw > 8 && p.x >= bx)
+                    [d barMediaSeek:(float)MAX(0, MIN(1, (p.x - bx) / bw))];
+                else
+                    [d barMediaPlayPause];
+            }
             break; }
         case TVOL:    [d barToggleMute]; break;   // tap on the speaker icon = mute
         default: break;

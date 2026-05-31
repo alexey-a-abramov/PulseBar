@@ -204,3 +204,19 @@ static void mediaCmd(NSString *cmd) {   // cmd: playpause | next track | previou
 void CtlMediaPlayPause(void) { mediaCmd(@"playpause"); }
 void CtlMediaNext(void)      { mediaCmd(@"next track"); }
 void CtlMediaPrev(void)      { mediaCmd(@"previous track"); }
+
+// Seek to `fraction` of the current track. Uses the cached duration (seconds);
+// both Spotify and Music take `player position` in seconds.
+void CtlMediaSeek(float fraction) {
+    if (!g_mq) g_mq = dispatch_queue_create("ai.pulsebar.media", DISPATCH_QUEUE_SERIAL);
+    double dur = g_appNP.duration;
+    if (dur <= 0) return;                                   // unknown length → ignore
+    if (fraction < 0) fraction = 0; if (fraction > 1) fraction = 1;
+    double secs = fraction * dur;
+    NSString *app = g_mediaApp;
+    dispatch_async(g_mq, ^{
+        osa([NSString stringWithFormat:@"with timeout of 2 seconds\ntell application \"%@\" to set player position to %.1f\nend timeout", app, secs]);
+        NowPlaying np = queryApp(app);
+        dispatch_async(dispatch_get_main_queue(), ^{ g_appNP = np; });
+    });
+}

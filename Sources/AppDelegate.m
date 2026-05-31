@@ -251,6 +251,7 @@
 - (void)barMediaPlayPause { PBLog(@"media play/pause (%@)", CtlMediaApp()); CtlMediaPlayPause(); }
 - (void)barMediaNext            { PBLog(@"action media next"); CtlMediaNext(); }
 - (void)barMediaPrev            { PBLog(@"action media prev"); CtlMediaPrev(); }
+- (void)barMediaSeek:(float)f   { PBLog(@"action media seek %.0f%%", f * 100); CtlMediaSeek(f); }
 - (void)barTogglePomodoro       { [self.pomo toggle]; }
 - (void)barOpenSettings         { [self showSettings]; }
 - (PBAgentCoordinator *)agentCoord {
