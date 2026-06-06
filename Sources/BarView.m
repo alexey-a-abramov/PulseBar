@@ -7,6 +7,7 @@
 #import "BarView.h"
 #import "Pomodoro.h"
 #import "PBDefaults.h"
+#import "PBLayout.h"
 #import "AppIndex.h"
 #import "Log.h"
 #import "PBFormat.h"
@@ -20,15 +21,6 @@ static const CGFloat kClusterPad = 4;    // trailing padding before the cluster
 static const CGFloat kAgentW     = 32;
 static const CGFloat kClusterGap = 2;    // gap between adjacent cluster controls
 
-// NOTE: persisted layout overrides are keyed by tileToken()/modeToken(), not by
-// these ordinals, so reordering is safe — but keep tileToken() in sync.
-typedef NS_ENUM(NSInteger, TileType) {
-    TCPU, TMEM, TGPU, TNET, TDISK, TUPTIME,
-    TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
-    TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
-    TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND, TLAUNCH, TSESSION, TNOTE,
-    TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TAPP_HIDE, TAPP_QUIT, TTAB
-};
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
 
 static NSString *modeIcon(NSInteger m) {
@@ -62,30 +54,7 @@ static NSColor *modePastel(NSInteger m) {
     }
     return [NSColor colorWithSRGBRed:0.66 green:0.83 blue:0.99 alpha:1];
 }
-// Layout spec for one tile in a mode's content area.
-//   weight — share of leftover width once every visible tile has its minW.
-//   prio   — higher survives longer; lowest-prio tiles are hidden first when
-//            the content area can't fit everyone's minW.
-//   minW   — narrowest width at which the tile is still legible.
-//   maxW   — cap on width (0 = uncapped). Capped tiles stay compact; the freed
-//            space becomes right margin, so the row never stretches to the edge.
-//   arg    — opaque per-tile index (e.g. which launcher app); 0 for most tiles.
-// Array order is the on-screen left→right order; prio is independent of it.
-typedef struct { TileType type; CGFloat weight; int prio; CGFloat minW; CGFloat maxW; int arg; } TileDef;
 
-// The Actions mode is a colourful app-launcher palette. Each entry shows the
-// real app icon (via PBAppIndex + NSWorkspace) and launches it on tap. `cmd`
-// (non-NULL) runs in a terminal instead of opening an app (e.g. Claude Code).
-typedef struct { const char *label; const char *query; const char *cmd; } Launcher;
-static const Launcher gLaunchers[] = {
-    { "ARC",      "Arc",       NULL },
-    { "TERMIUS",  "Termius 2", NULL },
-    { "ZED",      "Zed",       NULL },     // resolves "Zed Preview"
-    { "CLAUDE",   "Claude",    NULL },
-    { "CODE",     "Claude",    "claude" }, // Claude Code: run `claude` in a terminal
-    { "DYNALIST", "Dynalist",  NULL },
-};
-static const int gLauncherCount = (int)(sizeof(gLaunchers) / sizeof(gLaunchers[0]));
 
 // The real (colourful) app icon for a launcher query, cached so we don't hit
 // the disk on every 1 Hz redraw. NSNull marks a miss (app not installed).
@@ -101,197 +70,6 @@ static NSImage *launcherIcon(const char *queryC) {
     return img;
 }
 
-static int tilesForMode(NSInteger m, TileDef *out) {
-    int n = 0;
-    #define ADD(t, wt, pr, mn)       do { out[n++] = (TileDef){(t), (wt), (pr), (mn), 0, 0}; } while (0)
-    #define ADDM(t, wt, pr, mn, mx)  do { out[n++] = (TileDef){(t), (wt), (pr), (mn), (mx), 0}; } while (0)
-    #define ADDL(ix, wt, pr, mn)     do { out[n++] = (TileDef){TLAUNCH, (wt), (pr), (mn), 0, (ix)}; } while (0)
-    switch (m) {
-        case BarModeSystem:   // capped widths → compact chips + a safe right margin (never cut at the battery)
-            ADDM(TCPU,    1.6, 100, 64, 120);  ADDM(TMEM,   1.05, 90, 56, 112);  ADDM(TGPU,   0.7, 45, 44, 78);
-            ADDM(TNET,    1.0,  70, 60, 100);  ADDM(TDISK,  1.0,  60, 56, 104);  ADDM(TUPTIME,0.7, 30, 52, 72);
-            ADDM(TBATT,   0.3,  80, 40, 46);
-            break;
-        case BarModeMedia:
-            ADD(TMEDIA,  3.0, 100, 140); ADD(TVOL,   1.2,  80, 90);
-            break;
-        case BarModeProductivity:
-            ADDM(TPOMO,   1.5, 100, 80, 150);  ADDM(TSESSION, 0.9, 92, 60, 84);  ADDM(TNOTE, 0.8, 85, 48, 58);
-            ADDM(TCAFFEINE,0.85, 80, 52, 64);  ADDM(TSC_REMIND,0.8, 50, 46, 56);  ADDM(TSC_LOCK, 0.8, 70, 46, 56);
-            break;
-        case BarModeClassic:
-            ADD(TBRIGHT, 1.3,  90, 90);  ADD(TVOL,   1.3, 100, 90);
-            ADD(TMUTE,   0.7,  70, 40);  ADD(TMEDIA, 1.8,  80, 120);
-            break;
-        case BarModeShortcuts:   // app-launcher palette: dense, left-packed (weight 0 = no stretch)
-            for (int i = 0; i < gLauncherCount; i++) ADDL(i, 0, 90 - i, 42);   // ~icon + ~1.3·icon pitch
-            ADD(TSC_SHOT, 0, 40, 42); ADD(TSC_LOCK, 0, 35, 42);
-            break;
-    }
-    #undef ADD
-    #undef ADDM
-    #undef ADDL
-    return n;
-}
-
-// Human-readable tile name for the layout editor.
-static NSString *tileName(TileType t) {
-    switch (t) {
-        case TCPU: return @"CPU";          case TMEM: return @"Memory";       case TGPU: return @"GPU";
-        case TNET: return @"Network";      case TDISK: return @"Disk I/O";    case TUPTIME: return @"Uptime";
-        case TBATT: return @"Battery";     case TMEDIA: return @"Now Playing";case TVOL: return @"Volume";
-        case TMUTE: return @"Mute";        case TBRIGHT: return @"Brightness";case TPOMO: return @"Pomodoro";
-        case TCAFFEINE: return @"Caffeine";case TSC_NOTE: return @"New Note"; case TSC_REMIND: return @"Reminder";
-        case TSC_LOCK: return @"Lock";     case TSC_SLEEP: return @"Sleep";   case TSC_SHOT: return @"Screenshot";
-        case TSC_DARK: return @"Dark Mode";case TSC_MISSION: return @"Mission Control";
-        case TSC_LAUNCH: return @"Launchpad"; case TSC_ACTIVITY: return @"Activity";
-        case TLAUNCH: return @"App"; case TSESSION: return @"Session"; case TNOTE: return @"Side Note";
-        default: return @"—";
-    }
-}
-
-// Stable string tokens for the persisted override keys. These are written to
-// disk, so they MUST stay frozen even if the TileType / BarMode enums are
-// reordered or extended — do not rename existing tokens.
-static NSString *tileToken(TileType t) {
-    switch (t) {
-        case TCPU: return @"cpu";          case TMEM: return @"mem";        case TGPU: return @"gpu";
-        case TNET: return @"net";          case TDISK: return @"disk";      case TUPTIME: return @"uptime";
-        case TBATT: return @"batt";        case TMEDIA: return @"media";    case TVOL: return @"vol";
-        case TMUTE: return @"mute";        case TBRIGHT: return @"bright";  case TPOMO: return @"pomo";
-        case TCAFFEINE: return @"caffeine";case TSC_LOCK: return @"sc_lock";case TSC_SLEEP: return @"sc_sleep";
-        case TSC_SHOT: return @"sc_shot";  case TSC_DARK: return @"sc_dark";case TSC_MISSION: return @"sc_mission";
-        case TSC_NOTE: return @"sc_note";  case TSC_LAUNCH: return @"sc_launch"; case TSC_ACTIVITY: return @"sc_activity";
-        case TSC_REMIND: return @"sc_remind"; case TLAUNCH: return @"launch"; case TSESSION: return @"sess"; case TNOTE: return @"note";
-        default: return [NSString stringWithFormat:@"t%d", (int)t];
-    }
-}
-static NSString *modeToken(NSInteger m) {
-    switch (m) {
-        case BarModeSystem: return @"system";  case BarModeMedia: return @"media";
-        case BarModeProductivity: return @"productivity"; case BarModeClassic: return @"classic";
-        case BarModeShortcuts: return @"shortcuts";
-        default: return [NSString stringWithFormat:@"m%ld", (long)m];
-    }
-}
-// Per-tile override key, e.g. "PBTile.system.cpu" — stable across enum changes.
-static NSString *overrideKey(NSInteger mode, TileType t) {
-    return [NSString stringWithFormat:@"PBTile.%@.%@", modeToken(mode), tileToken(t)];
-}
-// Order key for a tile *instance*. Launchers all share the TLAUNCH token, so they
-// get a per-instance suffix (".<arg>") to be orderable individually; every other
-// tile keeps its plain override key (so the layout editor / existing overrides are
-// unaffected).
-static NSString *orderKeyForType(NSInteger mode, TileType t, int arg) {
-    return (t == TLAUNCH) ? [overrideKey(mode, t) stringByAppendingFormat:@".%d", arg]
-                          : overrideKey(mode, t);
-}
-// Persist a tile instance's left→right display order (drag-to-arrange + editor).
-static void setOrderOverride(NSInteger mode, TileType t, int arg, NSInteger order) {
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    NSString *key = orderKeyForType(mode, t, arg);
-    NSMutableDictionary *o = [([ud dictionaryForKey:key] ?: @{}) mutableCopy];
-    o[@"order"] = @(order);
-    [ud setObject:o forKey:key];
-}
-
-// Reverse of tileToken(), plus a few friendly synonyms for voice control.
-// Returns -1 if the token names no tile.
-static TileType tileTypeForToken(NSString *tok) {
-    NSString *t = tok.lowercaseString;
-    NSDictionary<NSString *, NSNumber *> *synonyms = @{
-        @"memory": @(TMEM), @"ram": @(TMEM), @"network": @(TNET), @"battery": @(TBATT),
-        @"volume": @(TVOL), @"brightness": @(TBRIGHT), @"pomodoro": @(TPOMO),
-    };
-    if (synonyms[t]) return (TileType)synonyms[t].intValue;
-    for (int i = 0; i <= TTAB; i++) if ([tileToken((TileType)i) isEqualToString:t]) return (TileType)i;
-    return (TileType)-1;
-}
-
-// Current version of the persisted per-tile override schema (the {hidden, w,
-// prio, order, minW} dicts under overrideKey()). Bump when the on-disk shape
-// changes so a future +ensureLayoutSchema can migrate old dicts.
-static const NSInteger kLayoutSchemaVersion = 1;
-
-// Overlay persisted size-editor overrides on the built-in defaults, dropping
-// any tile the user force-hid. Compacts in place; updates *pn.
-static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
-    // Stamp the schema version once, on the first override read of the session.
-    static dispatch_once_t schemaOnce;
-    dispatch_once(&schemaOnce, ^{ [BarView ensureLayoutSchema]; });
-
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    int n = *pn, out = 0;
-    for (int i = 0; i < n; i++) {
-        // Launcher tiles share one type token, so per-tile size overrides don't
-        // apply to them individually — keep them as-is.
-        if (defs[i].type != TLAUNCH) {
-            NSDictionary *o = [ud dictionaryForKey:overrideKey(mode, defs[i].type)];
-            if (o) {
-                if ([o[@"hidden"] boolValue]) continue;                   // force-hidden → drop
-                if (o[@"w"])    defs[i].weight = MAX(0.2, [o[@"w"] doubleValue]);
-                if (o[@"prio"]) defs[i].prio   = [o[@"prio"] intValue];
-                if (o[@"minW"]) defs[i].minW   = MAX(24, MIN(200, [o[@"minW"] doubleValue]));
-            }
-        }
-        defs[out++] = defs[i];
-    }
-    *pn = out;
-}
-
-// A tile's natural left→right index in a mode (its position in tilesForMode),
-// or a large sentinel if it doesn't belong to the mode. Used as the default
-// display order when a tile has no explicit @"order" override.
-static int naturalIndexForType(NSInteger mode, TileType t) {
-    TileDef defs[16];
-    int n = tilesForMode(mode, defs);
-    for (int i = 0; i < n; i++) if (defs[i].type == t) return i;
-    return 1 << 20;
-}
-
-// A tile instance's effective display order: its persisted @"order" override if
-// present, else its natural index. For launchers the natural order is the launcher
-// index (arg), and the override is keyed per-instance so they reorder individually.
-static NSInteger effectiveOrderForDef(NSInteger mode, TileDef d) {
-    NSDictionary *o = [NSUserDefaults.standardUserDefaults dictionaryForKey:orderKeyForType(mode, d.type, d.arg)];
-    if (o && o[@"order"]) return [o[@"order"] integerValue];
-    return (d.type == TLAUNCH) ? d.arg : naturalIndexForType(mode, d.type);
-}
-
-// Compute which tiles are visible for `mode` at content width `avail`, after
-// overrides + priority-based hiding, compacted left→right into `out`. Returns
-// the visible count. Shared by the renderer and the layout unit test.
-static int packVisible(NSInteger mode, CGFloat avail, TileDef *out) {
-    TileDef defs[16];
-    int n = tilesForMode(mode, defs);
-    applyTileOverrides(mode, defs, &n);
-    if (n <= 0) return 0;
-
-    // Reorder by effective display order before any hiding, so the editor's
-    // ▲/▼ arrangement drives the on-screen left→right order. Stable insertion
-    // sort over the small array; ties keep the natural (pre-sort) order.
-    for (int i = 1; i < n; i++) {
-        TileDef key = defs[i];
-        NSInteger ko = effectiveOrderForDef(mode, key);
-        int j = i - 1;
-        while (j >= 0 && effectiveOrderForDef(mode, defs[j]) > ko) { defs[j + 1] = defs[j]; j--; }
-        defs[j + 1] = key;
-    }
-
-    // Hide the lowest-priority tiles until everyone left fits at their minW;
-    // at least one tile always survives.
-    BOOL vis[16]; int nvis = n; CGFloat needed = 0;
-    for (int i = 0; i < n; i++) { vis[i] = YES; needed += defs[i].minW; }
-    while (needed > avail && nvis > 1) {
-        int worst = -1;
-        for (int i = 0; i < n; i++) if (vis[i] && (worst < 0 || defs[i].prio < defs[worst].prio)) worst = i;
-        if (worst < 0) break;
-        vis[worst] = NO; nvis--; needed -= defs[worst].minW;
-    }
-    int m = 0;
-    for (int i = 0; i < n; i++) if (vis[i]) out[m++] = defs[i];
-    return m;
-}
 
 // Lightweight, env-gated tracing (PULSEBAR_DEBUG=1) for diagnosing input.
 static BOOL pbDebug(void) { static int v = -1; if (v < 0) v = getenv("PULSEBAR_DEBUG") ? 1 : 0; return v; }
@@ -1199,14 +977,7 @@ static int viewCount(TileType t) {
     return names;
 }
 
-+ (void)ensureLayoutSchema {
-    // Per-tile override dicts (see overrideKey()) are versioned so future shape
-    // changes can be migrated. First run with no version recorded: stamp the
-    // current one. (No migrations exist yet at v1, so this is behaviour-neutral.)
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    if ([ud objectForKey:PBKeyLayoutSchemaVersion] == nil)
-        [ud setInteger:kLayoutSchemaVersion forKey:PBKeyLayoutSchemaVersion];
-}
++ (void)ensureLayoutSchema { pb_ensureLayoutSchema(); }   // engine owns the schema version
 
 + (NSArray<NSDictionary *> *)defaultLayoutForMode:(NSInteger)mode {
     TileDef defs[16];
