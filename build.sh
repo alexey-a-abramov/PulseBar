@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_NAME="PulseBar"
 BUNDLE_ID="com.fun.pulsebar"
-VERSION="1.2.0"                 # marketing version (CFBundleShortVersionString)
+VERSION="1.3.0"                 # marketing version (CFBundleShortVersionString)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SRC="$ROOT/Sources"
 BUILD="$ROOT/build"
