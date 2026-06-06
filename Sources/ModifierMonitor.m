@@ -26,20 +26,22 @@
     if (_localMon)  { [NSEvent removeMonitor:_localMon];  _localMon = nil; }
     [NSObject cancelPreviousPerformRequestsWithTarget:self];
     [self.delegate modifierMonitorDisengageOption];
+    [self.delegate modifierMonitorDisengageControl];
 }
 
-// Debounced (~0.3s) so quick ⌘-/⌥-shortcuts don't trigger; only a deliberate hold does.
+// Debounced (~0.3s) so quick ⌃-/⌥-shortcuts don't trigger; only a deliberate hold does.
+// ⌃ (Control) is a *momentary* modifier: engage on hold, disengage on release.
 - (void)flagsChanged:(NSEventModifierFlags)flags {
-    BOOL cmdNow = (flags & NSEventModifierFlagCommand) != 0, cmdWas = (_prev & NSEventModifierFlagCommand) != 0;
+    BOOL ctlNow = (flags & NSEventModifierFlagControl) != 0, ctlWas = (_prev & NSEventModifierFlagControl) != 0;
     BOOL optNow = (flags & NSEventModifierFlagOption)  != 0, optWas = (_prev & NSEventModifierFlagOption)  != 0;
     _prev = flags;
     if (optNow && !optWas) [self performSelector:@selector(fireOption) withObject:nil afterDelay:0.30];
     if (!optNow && optWas) { [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(fireOption) object:nil]; [self.delegate modifierMonitorDisengageOption]; }
-    if (cmdNow && !cmdWas) [self performSelector:@selector(fireCommand) withObject:nil afterDelay:0.30];
-    if (!cmdNow && cmdWas) [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(fireCommand) object:nil];
+    if (ctlNow && !ctlWas) [self performSelector:@selector(fireControl) withObject:nil afterDelay:0.30];
+    if (!ctlNow && ctlWas) { [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(fireControl) object:nil]; [self.delegate modifierMonitorDisengageControl]; }
 }
 
 - (void)fireOption  { [self.delegate modifierMonitorEngageOption]; }
-- (void)fireCommand { [self.delegate modifierMonitorEngageCommand]; }
+- (void)fireControl { [self.delegate modifierMonitorEngageControl]; }
 
 @end

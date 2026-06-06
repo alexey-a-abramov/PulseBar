@@ -50,6 +50,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic) BOOL showCores;          // CPU tile: sparkline vs per-core
 @property (nonatomic) BOOL caffeinated;        // caffeine toggle state
 @property (nonatomic) BOOL animateModeSwitch;  // NO on the live Touch Bar (DFR), YES on desktop
+@property (nonatomic) BOOL compactLayout;      // icon-only active mode pill + icon-only action tiles (tight spaces)
 @property (nonatomic) BOOL fnMode;             // (legacy) F1–F12 overlay — Fn is handled natively now
 @property (nonatomic) BOOL appOverlay;         // ⌥ held: show the frontmost-app overlay
 @property (nonatomic, copy)   NSString *appName;
@@ -57,10 +58,21 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic) double uptime;           // seconds since boot (System mode)
 @property (nonatomic) double sessionSeconds;   // length of the current active working session
 @property (nonatomic) BOOL   noteRecording;    // Focus side-note tile is capturing (turns red)
+@property (nonatomic) BOOL   breakReminder;    // ⌃-unmutable "take a break" banner is showing
+@property (nonatomic, copy)   NSString *breakReminderText;  // e.g. "1h 26m" — session length shown in the banner
+// Safe-area insets: keep drawn content clear of system chrome that overlaps the
+// bar — the close box (✕) on the live Touch Bar's left, the system panel on its
+// right. Reserved whether or not the chrome is currently visible, so the layout
+// never jumps. 0 on the desktop mirror (no chrome there). The bar still fills the
+// whole panel; only the tiles/tabs/orb stay inside the safe area.
+@property (nonatomic) CGFloat safeAreaLeftInset;
+@property (nonatomic) CGFloat safeAreaRightInset;
 @property (nonatomic, readonly) NSInteger mode;
 
 - (void)setMode:(NSInteger)mode animated:(BOOL)animated;
 - (NSInteger)recentMode;       // the previously-active mode
+- (void)beginPeekMode;         // ⌃ held: momentarily show the previous mode (recentMode is preserved)
+- (void)endPeekMode;           // ⌃ released: restore the mode shown before the peek
 
 - (void)updateWithCPU:(double)cpu cores:(const double *)cores count:(int)n
                   mem:(MemInfo)mem net:(NetSample)net gpu:(double)gpu

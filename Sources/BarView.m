@@ -51,7 +51,7 @@ static NSString *modeIcon(NSInteger m) {
         case BarModeSystem:       return @"cpu";
         case BarModeMedia:        return @"play.fill";
         case BarModeProductivity: return @"timer";
-        case BarModeClassic:      return @"slider.horizontal.3";
+        case BarModeClassic:      return @"apple.logo";
         case BarModeShortcuts:    return @"bolt.fill";
     }
     return @"square";
@@ -193,6 +193,23 @@ static NSString *modeToken(NSInteger m) {
 static NSString *overrideKey(NSInteger mode, TileType t) {
     return [NSString stringWithFormat:@"PBTile.%@.%@", modeToken(mode), tileToken(t)];
 }
+// Order key for a tile *instance*. Launchers all share the TLAUNCH token, so they
+// get a per-instance suffix (".<arg>") to be orderable individually; every other
+// tile keeps its plain override key (so the layout editor / existing overrides are
+// unaffected).
+static NSString *orderKeyForType(NSInteger mode, TileType t, int arg) {
+    return (t == TLAUNCH) ? [overrideKey(mode, t) stringByAppendingFormat:@".%d", arg]
+                          : overrideKey(mode, t);
+}
+// Persist a tile instance's left→right display order (drag-to-arrange + editor).
+static void setOrderOverride(NSInteger mode, TileType t, int arg, NSInteger order) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSString *key = orderKeyForType(mode, t, arg);
+    NSMutableDictionary *o = [([ud dictionaryForKey:key] ?: @{}) mutableCopy];
+    o[@"order"] = @(order);
+    [ud setObject:o forKey:key];
+}
+
 // Reverse of tileToken(), plus a few friendly synonyms for voice control.
 // Returns -1 if the token names no tile.
 static TileType tileTypeForToken(NSString *tok) {
@@ -247,12 +264,13 @@ static int naturalIndexForType(NSInteger mode, TileType t) {
     return 1 << 20;
 }
 
-// A tile's effective display order: its persisted @"order" override if present,
-// else its natural index from tilesForMode. Lower sorts further left.
-static NSInteger effectiveOrder(NSInteger mode, TileType t) {
-    NSDictionary *o = [NSUserDefaults.standardUserDefaults dictionaryForKey:overrideKey(mode, t)];
+// A tile instance's effective display order: its persisted @"order" override if
+// present, else its natural index. For launchers the natural order is the launcher
+// index (arg), and the override is keyed per-instance so they reorder individually.
+static NSInteger effectiveOrderForDef(NSInteger mode, TileDef d) {
+    NSDictionary *o = [NSUserDefaults.standardUserDefaults dictionaryForKey:orderKeyForType(mode, d.type, d.arg)];
     if (o && o[@"order"]) return [o[@"order"] integerValue];
-    return naturalIndexForType(mode, t);
+    return (d.type == TLAUNCH) ? d.arg : naturalIndexForType(mode, d.type);
 }
 
 // Compute which tiles are visible for `mode` at content width `avail`, after
@@ -269,9 +287,9 @@ static int packVisible(NSInteger mode, CGFloat avail, TileDef *out) {
     // sort over the small array; ties keep the natural (pre-sort) order.
     for (int i = 1; i < n; i++) {
         TileDef key = defs[i];
-        NSInteger ko = effectiveOrder(mode, key.type);
+        NSInteger ko = effectiveOrderForDef(mode, key);
         int j = i - 1;
-        while (j >= 0 && effectiveOrder(mode, defs[j].type) > ko) { defs[j + 1] = defs[j]; j--; }
+        while (j >= 0 && effectiveOrderForDef(mode, defs[j]) > ko) { defs[j + 1] = defs[j]; j--; }
         defs[j + 1] = key;
     }
 
@@ -327,6 +345,9 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     NSMutableArray<NSNumber *> *_cpuHist, *_netHist, *_gpuHist;
 
     NSInteger   _mode, _prevMode;
+    BOOL        _compactLayout;                 // icon-only pill + icon-only actions
+    BOOL        _peeking;                       // ⌃ momentary peek of the previous mode in progress
+    NSInteger   _peekSavedMode, _peekSavedPrev; // mode/recent to restore when the peek ends
     double      _anim;            // 1 = settled
     CGFloat     _tabW[BarModeCount];
     NSTimer    *_animTimer;
@@ -344,11 +365,23 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     BOOL        _agentPressing;  // agent orb press in progress
     BOOL        _notePressing;   // Focus side-note tile held (recording)
     NSTimeInterval _pressDownT;  // when the orb press began (for hold detection)
+    BOOL        _arranging;      // arrange mode: drag tiles left/right to reorder
+    BOOL        _pendingPillTap; // active pill pressed — deciding tap vs long-press
+    NSPoint     _pressPoint;     // where the active-pill press began (to cancel long-press on drift)
+    NSInteger   _dragType;       // TileType being dragged in arrange mode (-1 = none)
+    int         _dragArg;        // which instance (launcher index) is being dragged
 }
 
 - (BOOL)isFlipped { return YES; }
 - (NSInteger)mode { return _mode; }
 - (NSInteger)recentMode { return _prevMode; }
+- (BOOL)compactLayout { return _compactLayout; }
+- (void)setCompactLayout:(BOOL)c {
+    if (_compactLayout == c) return;
+    _compactLayout = c;
+    for (NSInteger i = 0; i < BarModeCount; i++) _tabW[i] = [self tabTarget:i];   // active pill shrinks/grows
+    [self setNeedsDisplay:YES];
+}
 
 // How many alternate views each metric tile cycles through (tap to switch).
 static int viewCount(TileType t) {
@@ -363,13 +396,22 @@ static int viewCount(TileType t) {
         _cpuHist = [NSMutableArray array]; _netHist = [NSMutableArray array]; _gpuHist = [NSMutableArray array];
         _netMax = 65536.0; _diskMax = 1048576.0;
         _topProc = @""; _npTitle = @""; _npArtist = @"";
-        _activeSlider = -1; _mode = BarModeSystem; _prevMode = BarModeSystem; _anim = 1.0;
+        _activeSlider = -1; _dragType = -1; _mode = BarModeSystem; _prevMode = BarModeSystem; _anim = 1.0;
         for (NSInteger i = 0; i < BarModeCount; i++) _tabW[i] = [self tabTarget:i];
         _lastTouchT = -1; _animateModeSwitch = YES;
         self.allowedTouchTypes = NSTouchTypeMaskDirect;   // receive physical Touch Bar touches
+        // Active-area awareness: if the system ever resizes the region it gives us
+        // (e.g. when its chrome appears), re-render to the real bounds. drawRect:
+        // already lays out against self.bounds, so this keeps us correct either way.
+        self.postsFrameChangedNotifications = YES;
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(activeAreaChanged)
+                                                     name:NSViewFrameDidChangeNotification object:self];
     }
     return self;
 }
+
+- (void)activeAreaChanged { [self setNeedsDisplay:YES]; }
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
 
 - (void)updateWithCPU:(double)cpu cores:(const double *)cores count:(int)n
                   mem:(MemInfo)mem net:(NetSample)net gpu:(double)gpu
@@ -399,13 +441,30 @@ static int viewCount(TileType t) {
 
 #pragma mark - mode switching (accordion)
 
-- (CGFloat)tabTarget:(NSInteger)m { return (m == _mode) ? 86 : 30; }
+- (CGFloat)tabTarget:(NSInteger)m { return (m == _mode) ? (_compactLayout ? 38 : 86) : 30; }
 
 - (void)setMode:(NSInteger)mode animated:(BOOL)animated {
     if (mode < 0 || mode >= BarModeCount || mode == _mode) return;
     _prevMode = _mode; _mode = mode;
     if (animated) { _anim = 0; [self startAnim]; }
     else { _anim = 1; for (NSInteger i = 0; i < BarModeCount; i++) _tabW[i] = [self tabTarget:i]; [self setNeedsDisplay:YES]; }
+}
+
+// Momentary "peek" — hold ⌃ to glance at the previous mode, release to snap back
+// to where you were. Unlike a tap, this must NOT change recentMode, so a peek of
+// the peek still returns home. setMode: rolls _prevMode forward, so we snapshot
+// both and restore them verbatim on release.
+- (void)beginPeekMode {
+    if (_peeking || _prevMode == _mode) return;
+    _peeking = YES;
+    _peekSavedMode = _mode; _peekSavedPrev = _prevMode;
+    [self setMode:_prevMode animated:_animateModeSwitch];
+}
+- (void)endPeekMode {
+    if (!_peeking) return;
+    _peeking = NO;
+    [self setMode:_peekSavedMode animated:_animateModeSwitch];
+    _prevMode = _peekSavedPrev;   // setMode: clobbered recentMode — restore the real one
 }
 
 - (void)startAnim {
@@ -495,6 +554,10 @@ static int viewCount(TileType t) {
 
 - (void)action:(NSString *)sym label:(NSString *)lab in:(NSRect)r active:(BOOL)active color:(NSColor *)c {
     if (active) { [[c colorWithAlphaComponent:0.18] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 3, 3) xRadius:5 yRadius:5] fill]; }
+    if (_compactLayout) {   // icon-only — no caption (keeps the tile narrow & uncluttered)
+        [self symbol:sym in:r pt:15 color:active ? c : [NSColor colorWithCalibratedWhite:0.92 alpha:1]];
+        return;
+    }
     [self symbol:sym in:NSMakeRect(r.origin.x, 3, r.size.width, 15) pt:13 color:active ? c : [NSColor colorWithCalibratedWhite:0.92 alpha:1]];
     [self tc:lab cx:NSMidX(r) y:21 sz:6.5 w:NSFontWeightBold c:[self dim]];
 }
@@ -740,8 +803,17 @@ static int viewCount(TileType t) {
         NSColor *ink = [NSColor colorWithCalibratedWhite:0.12 alpha:1];   // dark text on the soft pastel
         [modePastel(m) setFill];
         [[NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6] fill];
-        [self symbol:modeIcon(m) in:NSMakeRect(r.origin.x + 5, 0, 16, r.size.height) pt:12 color:ink];
-        if (r.size.width > 34) [self t:modeLabel(m) at:NSMakePoint(r.origin.x + 23, r.size.height / 2 - 5) sz:8.5 w:NSFontWeightHeavy c:ink];
+        if (_arranging) {   // arrange mode: pill turns into the drag affordance (tap to finish)
+            [self symbol:@"arrow.left.arrow.right" in:r pt:13 color:ink];
+            NSColor *ac = [NSColor colorWithSRGBRed:1.0 green:0.62 blue:0.20 alpha:1];
+            NSBezierPath *ring = [NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6];
+            ring.lineWidth = 1.5; [ac setStroke]; [ring stroke];
+        } else if (_compactLayout) {   // compact: highlight + icon only, no text label
+            [self symbol:modeIcon(m) in:r pt:13 color:ink];
+        } else {
+            [self symbol:modeIcon(m) in:NSMakeRect(r.origin.x + 5, 0, 16, r.size.height) pt:12 color:ink];
+            if (r.size.width > 34) [self t:modeLabel(m) at:NSMakePoint(r.origin.x + 23, r.size.height / 2 - 5) sz:8.5 w:NSFontWeightHeavy c:ink];
+        }
     } else {
         [[NSColor colorWithCalibratedWhite:1 alpha:0.07] setFill];
         [[NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6] fill];
@@ -750,9 +822,11 @@ static int viewCount(TileType t) {
 }
 
 - (void)drawFnKeys:(NSRect)b {
-    CGFloat W = b.size.width, H = b.size.height, pad = 4, gap = 3;
+    CGFloat H = b.size.height, pad = 4, gap = 3;
+    CGFloat li = MAX(0, self.safeAreaLeftInset), ri = MAX(0, self.safeAreaRightInset);
+    CGFloat W = b.size.width - li - ri;   // keypad lives inside the safe area
     int n = 12;
-    CGFloat bw = (W - pad * 2 - gap * (n - 1)) / n, x = pad;
+    CGFloat bw = (W - pad * 2 - gap * (n - 1)) / n, x = li + pad;
     for (int i = 1; i <= n; i++) {
         NSRect r = NSMakeRect(x, 2, bw, H - 4);
         [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill];
@@ -772,20 +846,61 @@ static int viewCount(TileType t) {
 
 - (void)drawAppOverlay:(NSRect)b {
     CGFloat W = b.size.width, H = b.size.height;
+    CGFloat li = MAX(0, self.safeAreaLeftInset), ri = MAX(0, self.safeAreaRightInset);
     [[[self accent] colorWithAlphaComponent:0.12] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
     if (self.appIcon) {
-        NSRect ir = NSMakeRect(12, (H - 24) / 2, 24, 24);
+        NSRect ir = NSMakeRect(li + 12, (H - 24) / 2, 24, 24);
         [self.appIcon drawInRect:ir fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
     }
-    [self t:(self.appName ?: @"App") at:NSMakePoint(44, H / 2 - 9) sz:14 w:NSFontWeightBold c:[NSColor whiteColor]];
-    [self t:@"⌥ app — quick actions" at:NSMakePoint(44, H / 2 + 6) sz:8 w:NSFontWeightMedium c:[self dim]];
+    [self t:(self.appName ?: @"App") at:NSMakePoint(li + 44, H / 2 - 9) sz:14 w:NSFontWeightBold c:[NSColor whiteColor]];
+    [self t:@"⌥ app — quick actions" at:NSMakePoint(li + 44, H / 2 + 6) sz:8 w:NSFontWeightMedium c:[self dim]];
     CGFloat bw = 74, gap = 8;
-    NSRect rh = NSMakeRect(W - 6 - bw * 2 - gap, 0, bw, H);
-    NSRect rq = NSMakeRect(W - 6 - bw, 0, bw, H);
+    NSRect rh = NSMakeRect(W - ri - 6 - bw * 2 - gap, 0, bw, H);
+    NSRect rq = NSMakeRect(W - ri - 6 - bw, 0, bw, H);
     [self drawPillButton:rh label:@"Hide" color:[self accent]];
     [self drawPillButton:rq label:@"Quit" color:[self pink]];
     [self push:TAPP_HIDE rect:rh arg:0];
     [self push:TAPP_QUIT rect:rq arg:0];
+}
+
+// A full-width "take a break" banner. Spans the whole bar so it can't be missed,
+// shows how long the current focus session has run, and isn't dismissable from
+// the bar (it auto-clears and re-appears every 15 min — see AppDelegate).
+- (void)drawBreakReminder:(NSRect)b {
+    CGFloat W = b.size.width, H = b.size.height;
+    CGFloat li = MAX(0, self.safeAreaLeftInset), ri = MAX(0, self.safeAreaRightInset);
+    NSColor *amber  = [NSColor colorWithSRGBRed:1.00 green:0.62 blue:0.20 alpha:1];
+    NSColor *cocoa  = [NSColor colorWithSRGBRed:0.45 green:0.28 blue:0.10 alpha:1];
+    NSGradient *bg = [[NSGradient alloc] initWithColors:@[
+        [NSColor colorWithSRGBRed:0.20 green:0.12 blue:0.03 alpha:1],
+        [NSColor colorWithSRGBRed:0.32 green:0.20 blue:0.05 alpha:1]]];
+    [bg drawInRect:b angle:0];
+    [[amber colorWithAlphaComponent:0.55] setFill]; NSRectFill(NSMakeRect(0, H - 2, W, 2));
+    [[amber colorWithAlphaComponent:0.55] setFill]; NSRectFill(NSMakeRect(0, 0, W, 2));
+
+    [self symbol:@"cup.and.saucer.fill" in:NSMakeRect(li + 14, (H - 22) / 2, 26, 22) pt:16 color:amber];
+
+    NSString *dur = self.breakReminderText.length ? self.breakReminderText : @"a while";
+    [self t:@"Time for a break" at:NSMakePoint(li + 50, H / 2 - 10) sz:13 w:NSFontWeightHeavy c:[NSColor whiteColor]];
+    [self t:[NSString stringWithFormat:@"Focused for %@ — stand up, stretch, look away from the screen", dur]
+           at:NSMakePoint(li + 50, H / 2 + 5) sz:8.5 w:NSFontWeightMedium c:[NSColor colorWithCalibratedWhite:0.85 alpha:1]];
+
+    [self t:@"↻ reminds again in 15 min" rx:W - ri - 14 y:H / 2 - 5 sz:8 w:NSFontWeightSemibold c:[cocoa blendedColorWithFraction:0.5 ofColor:amber]];
+}
+
+// Arrange mode cues: a dashed amber frame around the reorderable content and a
+// highlight on the tile currently being dragged.
+- (void)drawArrangeCuesIn:(NSRect)content {
+    NSColor *ac = [NSColor colorWithSRGBRed:1.0 green:0.62 blue:0.20 alpha:1];
+    NSBezierPath *frame = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(content, 2, 3) xRadius:6 yRadius:6];
+    frame.lineWidth = 1.5; CGFloat dash[2] = {4, 3}; [frame setLineDash:dash count:2 phase:0];
+    [[ac colorWithAlphaComponent:0.85] setStroke]; [frame stroke];
+    for (int i = 0; i < _nTiles; i++) {
+        if (_tiles[i].type != _dragType || (int)_tiles[i].arg != _dragArg) continue;
+        NSBezierPath *h = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(_tiles[i].rect, 2, 4) xRadius:5 yRadius:5];
+        [[ac colorWithAlphaComponent:0.20] setFill]; [h fill];
+        [ac setStroke]; h.lineWidth = 1.5; [h stroke];
+    }
 }
 
 - (void)drawRect:(NSRect)dirty {
@@ -795,16 +910,24 @@ static int viewCount(TileType t) {
     _nTiles = 0;
     if (self.appOverlay) { [self drawAppOverlay:b]; return; }   // ⌥ held -> app context
     if (self.fnMode)     { [self drawFnKeys:b];     return; }
+    if (self.breakReminder) { [self drawBreakReminder:b]; return; }   // unmutable session-length nudge
     [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
 
-    // Right cluster: just the agent orb, pinned to the trailing edge. No clock
+    // Safe area: reserve the left/right insets for system chrome (close box, right
+    // panel) so nothing important is ever covered and the layout doesn't shift as
+    // that chrome comes and goes. Faint hairlines mark the boundaries.
+    CGFloat li = MAX(0, self.safeAreaLeftInset), ri = MAX(0, self.safeAreaRightInset);
+    if (li > 0) [self divider:li];
+    if (ri > 0) [self divider:W - ri];
+
+    // Right cluster: just the agent orb, kept inside the right safe inset. No clock
     // (the menu bar shows the time) and no settings gear (it's in the menu too).
-    CGFloat rx = W - kClusterPad;
+    CGFloat rx = W - ri - kClusterPad;
     NSRect rAg = NSMakeRect(rx - kAgentW, 0, kAgentW, H); rx -= kAgentW + kClusterGap; [self drawTile:(Tile){TAGENT, rAg, 0}]; [self push:TAGENT rect:rAg arg:0];
     CGFloat rightEdge = rx; [self divider:rightEdge];
 
-    // left tabs (accordion)
-    CGFloat tx = 4;
+    // left tabs (accordion) — start after the left safe inset (the close box zone)
+    CGFloat tx = li + 4;
     for (NSInteger m = 0; m < BarModeCount; m++) {
         NSRect tr = NSMakeRect(tx, 0, _tabW[m], H);
         [self drawTab:m rect:tr active:(m == _mode)];
@@ -827,6 +950,7 @@ static int viewCount(TileType t) {
         [NSGraphicsContext restoreGraphicsState];
         [self modeContent:_mode in:content draw:NO record:YES];   // hit rects for current mode
     }
+    if (_arranging) [self drawArrangeCuesIn:content];   // dashed border + dragged-tile highlight
   } @catch (NSException *e) {
     // A drawing exception here would otherwise surface during the CATransaction
     // flush as a hard crash (signal 5). Log the reason and skip the frame.
@@ -845,15 +969,35 @@ static int viewCount(TileType t) {
 // Shared interaction core (used by both mouse and direct touch).
 - (void)beginAt:(NSPoint)p {
     _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO; _agentPressing = NO; _notePressing = NO;
+    _pendingPillTap = NO; _dragType = -1;
     Tile *t = [self tileAt:p];
     if (pbDebug()) NSLog(@"[PB] beginAt (%.0f,%.0f) tile=%ld", p.x, p.y, t ? (long)t->type : -1);
     if (!t) return;
+
+    // Arrange mode: tap a tab to finish/switch, otherwise pick up a content tile to drag-reorder.
+    if (_arranging) {
+        if (t->type == TTAB) {
+            [self exitArrange];
+            if (t->arg != _mode) { [self setMode:t->arg animated:self.animateModeSwitch]; [self.actionDelegate barDidChangeMode:t->arg]; }
+            return;
+        }
+        if (t->type == TAGENT) { [self exitArrange]; [self.actionDelegate barOpenAgent]; return; }
+        if ([self reorderable:t->type]) { _dragType = t->type; _dragArg = (int)t->arg; }   // begin drag (reorder in moveAt)
+        return;
+    }
+
     if (t->type == TAGENT) {   // agent orb -> push-to-talk (tap toggles, hold = walkie-talkie)
         _agentPressing = YES; _pressDownT = NSProcessInfo.processInfo.systemUptime;
         [self.actionDelegate barAgentDown]; return;
     }
     if (t->type == TNOTE) {    // side note -> hold to record, release to save (walkie-talkie)
         _notePressing = YES; [self.actionDelegate barNoteDown]; return;
+    }
+    // Active mode pill: defer — quick release jumps to the recent mode; a long hold enters arrange.
+    if (t->type == TTAB && t->arg == _mode) {
+        _pendingPillTap = YES; _pressPoint = p;
+        [self performSelector:@selector(enterArrange) withObject:nil afterDelay:0.55];
+        return;
     }
     CGFloat iconW = 20;
     if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
@@ -873,6 +1017,8 @@ static int viewCount(TileType t) {
 }
 - (void)moveAt:(NSPoint)p {
     if (_agentPressing || _notePressing) return;   // holding orb/note (walkie-talkie) — ignore drags/swipes
+    if (_arranging) { if (_dragType >= 0) [self dragReorderTo:p]; return; }
+    if (_pendingPillTap && fabs(p.x - _pressPoint.x) > 8) [self cancelLongPress];   // it's a swipe, not a hold
     if (_sliding && _activeSlider >= 0) {
         for (int i = 0; i < _nTiles; i++) if (_tiles[i].type == _activeSlider) {
             if (_activeSlider == TMEDIA) { _mediaSeekFrac = [self mediaSeekFracFor:&_tiles[i] at:p]; }   // commit on release
@@ -891,6 +1037,15 @@ static int viewCount(TileType t) {
     }
 }
 - (void)endInteraction {
+    if (_pendingPillTap) {   // active pill released before the long-press fired → it's a tap: jump to recent mode
+        [self cancelLongPress];
+        if (!_arranging && !_swiped) {
+            NSInteger target = _prevMode;
+            [self setMode:target animated:self.animateModeSwitch];
+            [self.actionDelegate barDidChangeMode:target];
+        }
+    }
+    _dragType = -1;   // drop (any reorder was persisted live during the drag)
     if (_agentPressing) {
         _agentPressing = NO;
         BOOL hold = (NSProcessInfo.processInfo.systemUptime - _pressDownT) >= 0.4;
@@ -899,6 +1054,47 @@ static int viewCount(TileType t) {
     if (_notePressing) { _notePressing = NO; [self.actionDelegate barNoteUp]; }
     if (_sliding && _activeSlider == TMEDIA) [self.actionDelegate barMediaSeek:_mediaSeekFrac];   // commit the scrub
     _sliding = NO; _activeSlider = -1;
+}
+
+#pragma mark - arrange mode (long-press the active pill, then drag tiles to reorder)
+
+- (void)enterArrange { _pendingPillTap = NO; if (_arranging) return; _arranging = YES; [self setNeedsDisplay:YES]; }
+- (void)exitArrange { if (!_arranging) return; _arranging = NO; _dragType = -1; [self setNeedsDisplay:YES]; }
+- (void)cancelLongPress {
+    if (!_pendingPillTap) return;
+    _pendingPillTap = NO;
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(enterArrange) object:nil];
+}
+// Tabs and the orb aren't content; everything else (including individual launchers) reorders.
+- (BOOL)reorderable:(TileType)t { return !(t == TTAB || t == TAGENT); }
+
+// Live reorder: move the dragged tile to the slot under the finger and persist a
+// sequential @"order" for the whole row (the same override the layout editor uses).
+// Tracks (type, arg) so the Actions launchers reorder individually.
+- (void)dragReorderTo:(NSPoint)p {
+    if (_dragType < 0) return;
+    TileType types[40]; int args[40]; CGFloat cx[40]; int n = 0;
+    for (int i = 0; i < _nTiles && n < 40; i++) {
+        if (![self reorderable:_tiles[i].type]) continue;
+        types[n] = _tiles[i].type; args[n] = (int)_tiles[i].arg; cx[n] = NSMidX(_tiles[i].rect); n++;
+    }
+    if (n < 2) return;
+    for (int i = 1; i < n; i++) {   // sort left→right by centre x (defensive)
+        TileType tt = types[i]; int ag = args[i]; CGFloat c = cx[i]; int j = i - 1;
+        while (j >= 0 && cx[j] > c) { types[j+1] = types[j]; args[j+1] = args[j]; cx[j+1] = cx[j]; j--; }
+        types[j+1] = tt; args[j+1] = ag; cx[j+1] = c;
+    }
+    int di = -1; for (int i = 0; i < n; i++) if (types[i] == _dragType && args[i] == _dragArg) { di = i; break; }
+    if (di < 0) return;
+    int target = 0; for (int i = 0; i < n; i++) { if (i == di) continue; if (cx[i] < p.x) target++; }
+    if (target == di) return;   // no slot change
+    TileType seqT[40]; int seqA[40]; int m = 0;
+    for (int i = 0; i < n; i++) if (i != di) { seqT[m] = types[i]; seqA[m] = args[i]; m++; }
+    for (int i = m; i > target; i--) { seqT[i] = seqT[i-1]; seqA[i] = seqA[i-1]; }
+    seqT[target] = (TileType)_dragType; seqA[target] = _dragArg; m++;
+    for (int i = 0; i < m; i++) setOrderOverride(_mode, seqT[i], seqA[i], i);
+    [[NSNotificationCenter defaultCenter] postNotificationName:PBLayoutChangedNotification object:nil];
+    [self setNeedsDisplay:YES];
 }
 
 // Mouse — used by the desktop Mirror window.

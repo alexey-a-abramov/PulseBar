@@ -13,5 +13,10 @@ extern NSString * const PBKeyWork;         // NSInteger — Pomodoro work minute
 extern NSString * const PBKeyBreak;        // NSInteger — Pomodoro break minutes
 extern NSString * const PBKeyShowTopProc;  // BOOL  — sample/show the top CPU process
 extern NSString * const PBKeyMediaApp;     // NSString — play/pause target app (e.g. Spotify)
+extern NSString * const PBKeyAdaptive;     // BOOL  — Pomodoro focus length auto-grows with the session
+extern NSString * const PBKeyBreakReminder;// NSInteger — minutes of unbroken session before the take-a-break banner (default 80)
+extern NSString * const PBKeySafeLeft;     // NSInteger — px reserved on the live bar's left for the close box (default 0)
+extern NSString * const PBKeySafeRight;    // NSInteger — px reserved on the live bar's right for the Control Strip (default 110)
+extern NSString * const PBKeyCompact;      // BOOL  — compact layout: icon-only active mode pill + icon-only action tiles
 extern NSString * const PBKeyTBBackup;     // NSString — saved Touch Bar PresentationModeGlobal
 extern NSString * const PBKeyLayoutSchemaVersion; // NSInteger — version of the persisted per-tile override schema

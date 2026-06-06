@@ -38,15 +38,23 @@
 @property (nonatomic) BOOL                          showTopProc;
 @end
 
+// Compact "1h 26m" / "44m" duration for the break banner.
+static NSString *PBHumanDuration(double sec) {
+    int s = sec < 0 ? 0 : (int)sec, h = s / 3600, m = (s % 3600) / 60;
+    return h > 0 ? [NSString stringWithFormat:@"%dh %dm", h, m] : [NSString stringWithFormat:@"%dm", m];
+}
+
 @implementation AppDelegate {
     double      _cores[128];
     char        _topBuf[256];
     double      _topCPU;
     NSInteger   _tick;
     double      _sessionStart, _lastActive;   // active working-session tracking (system input idle)
+    double      _nextBreakAt;                  // session-seconds at which the next break banner fires
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
     NSMenuItem *_fnItem;
+    NSMenuItem *_compactItem;
 }
 
 #pragma mark - lifecycle
@@ -78,6 +86,7 @@
     self.pomo = [Pomodoro new];
     self.pomo.workMinutes  = [ud objectForKey:PBKeyWork]  ? [ud integerForKey:PBKeyWork]  : 25;
     self.pomo.breakMinutes = [ud objectForKey:PBKeyBreak] ? [ud integerForKey:PBKeyBreak] : 5;
+    self.pomo.adaptiveLength = [ud objectForKey:PBKeyAdaptive] ? [ud boolForKey:PBKeyAdaptive] : YES;
     __weak AppDelegate *ws = self;
     self.pomo.onComplete = ^(BOOL wasWork) { [ws pomodoroFinished:wasWork]; };
     self.showTopProc = [ud objectForKey:PBKeyShowTopProc] ? [ud boolForKey:PBKeyShowTopProc] : YES;
@@ -119,17 +128,18 @@
     [wc addObserver:self selector:@selector(resumeSampling) name:NSWorkspaceScreensDidWakeNotification  object:nil];
     [wc addObserver:self selector:@selector(pauseSampling)  name:NSWorkspaceWillSleepNotification       object:nil];
     [wc addObserver:self selector:@selector(resumeSampling) name:NSWorkspaceDidWakeNotification          object:nil];
-    // When the frontmost app changes, macOS re-adds the system close box to our
-    // background modal and shifts the content (hiding the agent orb). Re-assert
-    // our presentation to reclaim the bar.
+    // When the frontmost app changes, macOS re-adds its close box (✕). We no
+    // longer re-present the whole modal here (that re-attach flickered and felt
+    // "weird"); we just quietly re-hide the ✕. The safe-area insets keep tiles and
+    // the agent orb visible regardless, so reclaiming the bar isn't needed.
     [wc addObserver:self selector:@selector(activeAppChanged:) name:NSWorkspaceDidActivateApplicationNotification object:nil];
 }
 - (void)activeAppChanged:(NSNotification *)n {
     if (getenv("PULSEBAR_SELFQUIT")) return;   // don't fight the Touch Bar under test
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(reassertBar) object:nil];
-    [self performSelector:@selector(reassertBar) withObject:nil afterDelay:0.12];   // coalesce rapid switches
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(suppressChrome) object:nil];
+    [self performSelector:@selector(suppressChrome) withObject:nil afterDelay:0.12];   // coalesce rapid switches
 }
-- (void)reassertBar { [self.presenter reassert]; }
+- (void)suppressChrome { [self.presenter suppressCloseBox]; }
 - (void)pauseSampling { [self.timer invalidate]; self.timer = nil; }
 - (void)resumeSampling {
     if (self.timer) return;
@@ -154,6 +164,15 @@
     self.barView.actionDelegate = self;
     self.barView.pomodoro = self.pomo;
     self.barView.animateModeSwitch = NO;   // don't hammer the live DFR with a 60fps transition
+    // Apple's ✕ shifts the whole active area to the right, so the agent orb on the
+    // trailing edge falls off-screen. We "squeeze" the layout from the RIGHT so the
+    // orb lands back inside the visible area. The shift itself clears the ✕, so no
+    // LEFT reserve is needed by default. Both are live-adjustable in Settings → Fit
+    // (and via `defaults write com.fun.pulsebar safeAreaRight <px>`).
+    NSUserDefaults *du = NSUserDefaults.standardUserDefaults;
+    self.barView.safeAreaLeftInset  = [du objectForKey:PBKeySafeLeft]  ? [du integerForKey:PBKeySafeLeft]  : 0;
+    self.barView.safeAreaRightInset = [du objectForKey:PBKeySafeRight] ? [du integerForKey:PBKeySafeRight] : 110;
+    self.barView.compactLayout = [du boolForKey:PBKeyCompact];   // icon-only pill + actions when space is tight
     self.presenter = [[PBTouchBarPresenter alloc] initWithContentView:self.barView];
 }
 
@@ -177,19 +196,37 @@
     NSString *bld = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"?";
     NSString *header = [NSString stringWithFormat:@"PulseBar — system monitor · v%@ (build %@)", ver, bld];
     [[menu addItemWithTitle:header action:nil keyEquivalent:@""] setEnabled:NO];
+
+    // Primary action
     [menu addItem:[NSMenuItem separatorItem]];
-    [menu addItemWithTitle:@"Ask the Agent…"          action:@selector(barOpenAgent)   keyEquivalent:@"a"];
-    [menu addItemWithTitle:@"Settings…"               action:@selector(showSettings)   keyEquivalent:@","];
-    [menu addItemWithTitle:@"Customize layout…"       action:@selector(showLayoutEditor) keyEquivalent:@""];
-    [menu addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror) keyEquivalent:@"m"];
-    [menu addItemWithTitle:@"Re-attach to Touch Bar"  action:@selector(attachToTouchBar) keyEquivalent:@"r"];
-    [menu addItemWithTitle:@"Toggle CPU-core view"    action:@selector(toggleCores)     keyEquivalent:@"c"];
-    [menu addItemWithTitle:@"Open Log"                action:@selector(openLog)         keyEquivalent:@"l"];
-    [menu addItemWithTitle:@"Export Side-Notes (CSV)…" action:@selector(exportNotes)    keyEquivalent:@""];
-    _fnItem = [menu addItemWithTitle:@"Modifier shortcuts  (⌘ recent · ⌥ app)" action:@selector(toggleModifiers) keyEquivalent:@""];
+    [menu addItemWithTitle:@"Ask the Agent…"             action:@selector(barOpenAgent)     keyEquivalent:@"a"];
+
+    // Side-notes — view the history, or export it
+    NSMenuItem *notes = [[NSMenuItem alloc] initWithTitle:@"Side-Notes" action:nil keyEquivalent:@""];
+    NSMenu *notesSub = [[NSMenu alloc] init];
+    [notesSub addItemWithTitle:@"View Side-Notes…"       action:@selector(viewSideNotes)    keyEquivalent:@""];
+    [notesSub addItemWithTitle:@"Export as CSV…"         action:@selector(exportSideNotes)  keyEquivalent:@""];
+    for (NSMenuItem *it in notesSub.itemArray) it.target = self;
+    notes.submenu = notesSub;
+    [menu addItem:notes];
+
+    // Configuration
     [menu addItem:[NSMenuItem separatorItem]];
-    [menu addItemWithTitle:@"Quit PulseBar" action:@selector(quit) keyEquivalent:@"q"];
+    [menu addItemWithTitle:@"Settings…"                  action:@selector(showSettings)     keyEquivalent:@","];
+    [menu addItemWithTitle:@"Customize Layout…"          action:@selector(showLayoutEditor) keyEquivalent:@""];
+    _fnItem = [menu addItemWithTitle:@"Modifier Shortcuts  (⌃ peek · ⌥ app)" action:@selector(toggleModifiers) keyEquivalent:@""];
+
+    // Touch Bar
+    [menu addItem:[NSMenuItem separatorItem]];
+    [menu addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror)     keyEquivalent:@"m"];
+    [menu addItemWithTitle:@"Re-take Over the Touch Bar" action:@selector(reattachFully)    keyEquivalent:@"r"];
+    _compactItem = [menu addItemWithTitle:@"Compact Layout (icon-only)" action:@selector(toggleCompact) keyEquivalent:@""];
+    [menu addItemWithTitle:@"Open Log"                   action:@selector(openLog)          keyEquivalent:@"l"];
+
+    [menu addItem:[NSMenuItem separatorItem]];
+    [menu addItemWithTitle:@"Quit PulseBar"              action:@selector(quit)             keyEquivalent:@"q"];
     for (NSMenuItem *it in menu.itemArray) if (it.action) it.target = self;
+    _compactItem.state = self.barView.compactLayout ? NSControlStateValueOn : NSControlStateValueOff;
     self.statusItem.menu = menu;
 }
 
@@ -199,15 +236,40 @@
     if (!self.mirror) {
         self.mirror = [[PBMirrorController alloc] initWithActionDelegate:self pomodoro:self.pomo mode:self.barView.mode];
         self.mirror.bar.caffeinated = (self.caffeine != nil);
+        // Mirror the live bar's safe area so the desktop copy is a faithful preview
+        // of what the Touch Bar shows (and the reserved zones are visible here).
+        self.mirror.bar.safeAreaLeftInset  = self.barView.safeAreaLeftInset;
+        self.mirror.bar.safeAreaRightInset = self.barView.safeAreaRightInset;
+        self.mirror.bar.compactLayout = self.barView.compactLayout;
     }
     [self.mirror show];
 }
 - (void)hideMirror   { [self.mirror hide]; }
 - (void)toggleMirror { self.mirror.visible ? [self.mirror hide] : [self showMirror]; }
 
+// Compact layout — icon-only active pill + icon-only action tiles. Applies to the
+// live bar and the mirror, persists, and keeps the menu check in sync.
+- (void)setCompact:(BOOL)on {
+    self.barView.compactLayout = on; self.mirror.bar.compactLayout = on;
+    _compactItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyCompact];
+    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+}
+- (void)toggleCompact { [self setCompact:!self.barView.compactLayout]; }
+
 #pragma mark - Touch Bar attach / detach
 
-- (void)attachToTouchBar { [self.presenter attach]; }
+- (void)attachToTouchBar { [self.presenter attach]; }   // lightweight present (used at launch)
+
+// Menu "Re-take Over the Touch Bar": fully re-claim the bar, including evicting
+// the system Control Strip (the brightness/sound/Siri region that can creep back
+// after app or system events). This re-asserts the global takeover —
+// PresentationModeGlobal=app + a TouchBarServer/ControlStrip restart — then
+// re-presents, so the whole bar is ours again. (~1s flicker from the restart.)
+- (void)reattachFully {
+    if (getenv("PULSEBAR_SELFQUIT")) { [self.presenter attach]; return; }   // never change system settings under test
+    [self applyFullBar:YES];   // sets PBKeyFullBar=YES, hides the Control Strip, restarts TB, re-presents
+}
 
 - (void)detach {
     if (self.caffeine) { [self.caffeine terminate]; self.caffeine = nil; }
@@ -240,12 +302,10 @@
     } else { _topBuf[0] = '\0'; _topCPU = 0; }
     _tick++;
 
-    // Periodic safety net for the system close box. App-activation usually fires
-    // NSWorkspaceDidActivateApplicationNotification (handled in activeAppChanged:),
-    // but macOS can also re-decorate our background modal with its ✕ — shifting the
-    // content and hiding the agent orb — without a notification we observe. Re-assert
-    // every ~10s to reclaim the bar. Skipped under test (PULSEBAR_SELFQUIT).
-    if (_tick % 10 == 0 && getenv("PULSEBAR_SELFQUIT") == NULL) [self reassertBar];
+    // (No periodic re-assert: it re-presented the modal every ~10s, which read as
+    // the bar "flickering"/jumping. The safe-area insets now keep the agent orb and
+    // tiles visible even when macOS re-decorates our modal with its ✕, so reclaiming
+    // the bar only on a real app switch — activeAppChanged: — is enough.)
 
     NowPlaying np; memset(&np, 0, sizeof(np));
     float vol = 0, bright = 0; BOOL mute = NO;
@@ -269,6 +329,7 @@
         // grows with the uninterrupted working session. See README.
         if (self.pomo.state == PomoIdle && self.pomo.adaptiveLength)
             self.pomo.workMinutes = [Pomodoro adaptiveWorkMinutes:session];
+        [self updateBreakReminder:session];
     }
 
     NSString *tp = [NSString stringWithUTF8String:_topBuf] ?: @"";
@@ -399,9 +460,14 @@
 
 #pragma mark - menu actions
 
-- (void)toggleCores  { self.barView.showCores = !self.barView.showCores; [self.barView setNeedsDisplay:YES]; }
 - (void)openLog { [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:PBLogFile()]]; }
-- (void)exportNotes {
+
+// Side-notes: open the history (Settings → Notes), or export it to CSV.
+- (void)viewSideNotes {
+    if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
+    [self.settings presentTab:@"notes"];
+}
+- (void)exportSideNotes {
     NSString *path = [PBVoiceNotes exportCSV];
     if (path) { [[NSWorkspace sharedWorkspace] selectFile:path inFileViewerRootedAtPath:PBLogDirectory()]; }
     else {
@@ -410,6 +476,37 @@
         a.informativeText = @"Hold the NOTE tile in Focus mode and speak to capture a side-note.";
         [NSApp activateIgnoringOtherApps:YES]; [a runModal];
     }
+}
+
+#pragma mark - session break reminder (unmutable)
+
+// When the uninterrupted working session passes the configured threshold
+// (default 1h20m), flash a full-width "take a break" banner on the bar and
+// re-arm it to repeat every 15 min until the session resets (a >5-min input gap).
+- (void)updateBreakReminder:(double)session {
+    if (getenv("PULSEBAR_SELFQUIT")) return;
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSInteger thrMin = [ud objectForKey:PBKeyBreakReminder] ? [ud integerForKey:PBKeyBreakReminder] : 80;
+    double thr = (thrMin > 0 ? thrMin : 80) * 60.0, repeat = 15 * 60.0;
+    if (session < thr) { _nextBreakAt = thr; return; }      // below threshold → arm for the first crossing
+    if (_nextBreakAt < thr) _nextBreakAt = thr;
+    if (session + 0.5 >= _nextBreakAt) {
+        _nextBreakAt = session + repeat;
+        [self fireBreakReminder:session];
+    }
+}
+- (void)fireBreakReminder:(double)session {
+    NSString *txt = PBHumanDuration(session);
+    self.barView.breakReminderText = txt;   self.barView.breakReminder = YES;
+    self.mirror.bar.breakReminderText = txt; self.mirror.bar.breakReminder = YES;
+    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideBreakReminder) object:nil];
+    [self performSelector:@selector(hideBreakReminder) withObject:nil afterDelay:12.0];
+    PBLog(@"break reminder shown (session %@)", txt);
+}
+- (void)hideBreakReminder {
+    self.barView.breakReminder = NO; self.mirror.bar.breakReminder = NO;
+    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
 }
 
 #pragma mark - modifier shortcuts (⌘ → recent mode · ⌥ → app overlay)
@@ -421,17 +518,13 @@
 }
 - (void)disableModifiers { [_modMonitor disable]; [self hideAppOverlay]; }
 
-// PBModifierMonitorDelegate — apply a deliberate ⌘/⌥ hold to the bar(s).
+// PBModifierMonitorDelegate — apply a deliberate ⌃/⌥ hold to the bar(s).
+// ⌃ is momentary: hold to peek the previous mode, release to snap back (the
+// peek doesn't persist — the last *chosen* mode is what we restore on launch).
 - (void)modifierMonitorEngageOption    { [self showAppOverlay]; }
 - (void)modifierMonitorDisengageOption { [self hideAppOverlay]; }
-- (void)modifierMonitorEngageCommand   { [self switchRecent]; }
-
-- (void)switchRecent {
-    NSInteger r = [self.barView recentMode];
-    [self.barView setMode:r animated:self.barView.animateModeSwitch];
-    [self.mirror.bar setMode:r animated:self.mirror.bar.animateModeSwitch];
-    [NSUserDefaults.standardUserDefaults setInteger:r forKey:PBKeyMode];
-}
+- (void)modifierMonitorEngageControl   { [self.barView beginPeekMode]; [self.mirror.bar beginPeekMode]; }
+- (void)modifierMonitorDisengageControl { [self.barView endPeekMode];  [self.mirror.bar endPeekMode]; }
 - (void)showAppOverlay {
     NSRunningApplication *app = [NSWorkspace sharedWorkspace].frontmostApplication;
     NSString *name = app.localizedName ?: @"App"; NSImage *icon = app.icon;
@@ -476,15 +569,56 @@
 - (NSInteger)settingsWorkMinutes  { return self.pomo.workMinutes; }
 - (NSInteger)settingsBreakMinutes { return self.pomo.breakMinutes; }
 - (void)settingsSetWork:(NSInteger)w breakMin:(NSInteger)b {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    BOOL workChanged = (w != self.pomo.workMinutes);
     self.pomo.workMinutes = w; self.pomo.breakMinutes = b;
-    [NSUserDefaults.standardUserDefaults setInteger:w forKey:PBKeyWork];
-    [NSUserDefaults.standardUserDefaults setInteger:b forKey:PBKeyBreak];
+    [ud setInteger:w forKey:PBKeyWork];
+    [ud setInteger:b forKey:PBKeyBreak];
+    if (workChanged && self.pomo.adaptiveLength) {   // a manual Work choice sticks (matches the Focus tile)
+        self.pomo.adaptiveLength = NO;
+        [ud setBool:NO forKey:PBKeyAdaptive];
+    }
 }
 - (BOOL)settingsTopProcEnabled { return self.showTopProc; }
 - (void)settingsSetTopProc:(BOOL)on {
     self.showTopProc = on;
     [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyShowTopProc];
 }
+- (BOOL)settingsMirrorVisible { return self.mirror.visible; }
+- (void)settingsSetMirror:(BOOL)on { on ? [self showMirror] : [self hideMirror]; }
+- (BOOL)settingsModifiersEnabled { return [NSUserDefaults.standardUserDefaults boolForKey:PBKeyModifiers]; }
+- (void)settingsSetModifiers:(BOOL)on {
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyModifiers];
+    _fnItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
+    if (on) [self enableModifiers]; else [self disableModifiers];
+}
+- (BOOL)settingsAdaptiveLength { return self.pomo.adaptiveLength; }
+- (void)settingsSetAdaptive:(BOOL)on {
+    self.pomo.adaptiveLength = on;
+    [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyAdaptive];
+}
+- (NSInteger)settingsBreakReminderMinutes {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    return [ud objectForKey:PBKeyBreakReminder] ? [ud integerForKey:PBKeyBreakReminder] : 80;
+}
+- (void)settingsSetBreakReminderMinutes:(NSInteger)m {
+    [NSUserDefaults.standardUserDefaults setInteger:MAX(1, m) forKey:PBKeyBreakReminder];
+    _nextBreakAt = 0;   // re-arm against the new threshold on the next tick
+}
+- (CGFloat)settingsSafeLeft  { return self.barView.safeAreaLeftInset; }
+- (CGFloat)settingsSafeRight { return self.barView.safeAreaRightInset; }
+- (void)settingsSetSafeLeft:(CGFloat)px {
+    self.barView.safeAreaLeftInset = px; self.mirror.bar.safeAreaLeftInset = px;
+    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)lround(px) forKey:PBKeySafeLeft];
+}
+- (void)settingsSetSafeRight:(CGFloat)px {
+    self.barView.safeAreaRightInset = px; self.mirror.bar.safeAreaRightInset = px;
+    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)lround(px) forKey:PBKeySafeRight];
+}
+- (BOOL)settingsCompact { return self.barView.compactLayout; }
+- (void)settingsSetCompact:(BOOL)on { [self setCompact:on]; }
 - (NSString *)settingsMediaApp { NSString *a = [NSUserDefaults.standardUserDefaults stringForKey:PBKeyMediaApp]; return a.length ? a : @"Spotify"; }
 - (void)settingsSetMediaApp:(NSString *)app {
     NSString *a = [app stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];

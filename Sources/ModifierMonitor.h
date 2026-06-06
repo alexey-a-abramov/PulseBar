@@ -6,9 +6,10 @@
 #import <AppKit/AppKit.h>
 
 @protocol PBModifierMonitorDelegate <NSObject>
-- (void)modifierMonitorEngageOption;     // ⌥ held deliberately
-- (void)modifierMonitorDisengageOption;  // ⌥ released
-- (void)modifierMonitorEngageCommand;    // ⌘ held deliberately
+- (void)modifierMonitorEngageOption;      // ⌥ held deliberately
+- (void)modifierMonitorDisengageOption;   // ⌥ released
+- (void)modifierMonitorEngageControl;     // ⌃ held deliberately (momentary)
+- (void)modifierMonitorDisengageControl;  // ⌃ released
 @end
 
 @interface PBModifierMonitor : NSObject

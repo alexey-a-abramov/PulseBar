@@ -30,8 +30,9 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
         // The visible Touch Bar app area is ~1004pt. Even in full takeover, the
         // system-tray item occupies the right edge, so the modal content stays
-        // ~1004 — sizing wider just pushes the right cluster off-screen. (This is
-        // exactly the width the layout editor previews, so live == editor.)
+        // ~1004 — sizing wider just pushes the right cluster off-screen. We fill
+        // the whole panel and let BarView reserve safe margins for the system
+        // close box (left) and the right-edge panel — see BarView.safeArea*Inset.
         content.translatesAutoresizingMaskIntoConstraints = NO;
         _widthC = [content.widthAnchor constraintEqualToConstant:1004];
         _widthC.active = YES;
@@ -49,6 +50,12 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
         _stripButton.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightBold];
         _stripItem = [[NSCustomTouchBarItem alloc] initWithIdentifier:kStripID];
         _stripItem.view = _stripButton;
+
+        // Suppress Apple's close box (✕) at SETUP, before the first present. MTMR
+        // does exactly this once and the ✕ never appears; calling it only after
+        // presenting (as we used to) is unreliable. It's a global DFR flag, so it
+        // persists to every later present.
+        if (_showCloseBox) _showCloseBox(NO);
     }
     return self;
 }
@@ -76,19 +83,32 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     if ([NSTouchBarItem respondsToSelector:@selector(addSystemTrayItem:)]) [NSTouchBarItem addSystemTrayItem:_stripItem];
     if (_setPresence)  _setPresence(kStripID, YES);
 
-    if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:systemTrayItemIdentifier:)]) {
+    // Re-assert close-box suppression before presenting too (belt and braces).
+    [self hideCloseBox];
+
+    // When taking over, present with placement:1 — this hides the system Control
+    // Strip (the brightness/sound/Siri region) NATIVELY, with no defaults write and
+    // no TouchBarServer restart (so no flicker). This is how MTMR hides it. The
+    // plain 2-arg present keeps the Control Strip, so we only use it when the
+    // takeover is off (or the placement SPI is missing).
+    BOOL takeover = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar];
+    BOOL hasPlacement = [TB respondsToSelector:@selector(presentSystemModalTouchBar:placement:systemTrayItemIdentifier:)];
+    BOOL has2arg      = [TB respondsToSelector:@selector(presentSystemModalTouchBar:systemTrayItemIdentifier:)];
+    if (takeover && hasPlacement) {
+        [NSTouchBar presentSystemModalTouchBar:_fullBar placement:1 systemTrayItemIdentifier:kStripID];
+        _spiOK = YES; PBLog(@"presented full Touch Bar (placement:1 — Control Strip hidden natively)");
+    } else if (has2arg) {
         [NSTouchBar presentSystemModalTouchBar:_fullBar systemTrayItemIdentifier:kStripID];
-        _spiOK = YES; PBLog(@"presented full Touch Bar (2-arg SPI)");
-    } else if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:placement:systemTrayItemIdentifier:)]) {
+        _spiOK = YES; PBLog(@"presented full Touch Bar (2-arg SPI — Control Strip visible)");
+    } else if (hasPlacement) {
         [NSTouchBar presentSystemModalTouchBar:_fullBar placement:1 systemTrayItemIdentifier:kStripID];
         _spiOK = YES; PBLog(@"presented full Touch Bar (placement SPI)");
     } else {
         _spiOK = NO; PBLog(@"Touch Bar SPI unavailable");
     }
 
-    // Hide the system close box (the round ✕ at the left edge) — it eats the
-    // left of the bar and clips our first tab. The modal shows it on present, so
-    // set it AFTER presenting and once more on the next runloop turn to be sure.
+    // And once more after presenting (and on the next runloop turn) to be sure the
+    // ✕ stays hidden if the system re-decorated the modal on present.
     [self hideCloseBox];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ [self hideCloseBox]; });
@@ -99,18 +119,9 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
     else PBLog(@"close-box SPI unavailable (DFRSystemModalShowsCloseBoxWhenFrontMost not found)");
 }
 
-// On a frontmost-app change macOS re-decorates our background modal with its
-// close box (and shifts our content, hiding the agent orb). Re-present to
-// re-own the bar and re-hide the box — quietly (no log spam on every switch).
-- (void)reassert {
-    if (!_spiOK) return;
-    Class TB = NSClassFromString(@"NSTouchBar");
-    if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:systemTrayItemIdentifier:)])
-        [NSTouchBar presentSystemModalTouchBar:_fullBar systemTrayItemIdentifier:kStripID];
-    else if ([TB respondsToSelector:@selector(presentSystemModalTouchBar:placement:systemTrayItemIdentifier:)])
-        [NSTouchBar presentSystemModalTouchBar:_fullBar placement:1 systemTrayItemIdentifier:kStripID];
-    [self hideCloseBox];
-}
+// Re-hide Apple's ✕ without re-presenting the modal. Cheap and invisible — used
+// on app switches in place of a full re-attach (which flickered).
+- (void)suppressCloseBox { if (_spiOK) [self hideCloseBox]; }
 
 - (void)detach {
     Class TB = NSClassFromString(@"NSTouchBar");
