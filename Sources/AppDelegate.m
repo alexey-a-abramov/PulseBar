@@ -16,6 +16,7 @@
 #import "CrashReporter.h"
 #import "ModifierMonitor.h"
 #import "PBProcess.h"
+#import "PBLoginItem.h"
 #import "AppIndex.h"
 #import "AgentCoordinator.h"
 #import "VoiceNotes.h"
@@ -36,6 +37,7 @@
 @property (nonatomic, strong) LayoutEditorWindowController *layoutEditor;
 @property (nonatomic, strong) NSTask               *caffeine;
 @property (nonatomic, strong) PBVoiceNotes         *voiceNotes;
+@property (nonatomic, strong) PBLoginItem          *loginItem;
 @property (nonatomic) BOOL                          showTopProc;
 @end
 
@@ -561,8 +563,9 @@ static NSString *PBHumanDuration(double sec) {
 
 - (BOOL)settingsFullBarEnabled { return [NSUserDefaults.standardUserDefaults boolForKey:PBKeyFullBar]; }
 - (void)settingsSetFullBar:(BOOL)on { [self applyFullBar:on]; }
-- (BOOL)settingsLoginEnabled { return [[NSFileManager defaultManager] fileExistsAtPath:[self agentPath]]; }
-- (void)settingsSetLogin:(BOOL)on { [self setLogin:on]; }
+- (PBLoginItem *)loginItem { if (!_loginItem) _loginItem = [PBLoginItem new]; return _loginItem; }
+- (BOOL)settingsLoginEnabled { return [self.loginItem isEnabled]; }
+- (void)settingsSetLogin:(BOOL)on { [self.loginItem setEnabled:on]; }
 - (NSInteger)settingsWorkMinutes  { return self.pomo.workMinutes; }
 - (NSInteger)settingsBreakMinutes { return self.pomo.breakMinutes; }
 - (void)settingsSetWork:(NSInteger)w breakMin:(NSInteger)b {
@@ -634,33 +637,5 @@ static NSString *PBHumanDuration(double sec) {
 #pragma mark - full-bar takeover (reversible)
 
 - (void)applyFullBar:(BOOL)on { [self.presenter applyFullBar:on]; }
-
-// Run a process and capture trimmed stdout (used by the login-item helpers).
-- (NSString *)run:(NSString *)path args:(NSArray<NSString *> *)args {
-    return PBRunCapture(path, args);
-}
-
-#pragma mark - login item (LaunchAgent)
-
-- (NSString *)agentPath {
-    return [NSHomeDirectory() stringByAppendingPathComponent:@"Library/LaunchAgents/com.fun.pulsebar.plist"];
-}
-- (void)setLogin:(BOOL)on {
-    NSString *p = [self agentPath];
-    NSFileManager *fm = [NSFileManager defaultManager];
-    if (on) {
-        NSString *exe = [[NSBundle mainBundle] executablePath];
-        NSDictionary *plist = @{ @"Label": @"com.fun.pulsebar",
-                                 @"ProgramArguments": @[exe],
-                                 @"RunAtLoad": @YES,
-                                 @"KeepAlive": @NO };
-        [fm createDirectoryAtPath:[p stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
-        [plist writeToFile:p atomically:YES];
-        [self run:@"/bin/launchctl" args:@[@"load", @"-w", p]];
-    } else {
-        [self run:@"/bin/launchctl" args:@[@"unload", @"-w", p]];
-        [fm removeItemAtPath:p error:nil];
-    }
-}
 
 @end

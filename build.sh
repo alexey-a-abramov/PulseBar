@@ -51,7 +51,7 @@ clang -fobjc-arc -O2 -mmacosx-version-min=12.0 -isysroot "$SDK" \
   "$SRC/BarView.m" "$SRC/PreviewData.m" "$SRC/TouchBarPresenter.m" "$SRC/MirrorController.m" \
   "$SRC/Agent.m" "$SRC/AgentWindowController.m" "$SRC/AgentCoordinator.m" "$SRC/VoiceNotes.m" \
   "$SRC/SettingsWindowController.m" "$SRC/LayoutEditorWindowController.m" \
-  "$SRC/CrashReporter.m" "$SRC/ModifierMonitor.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
+  "$SRC/CrashReporter.m" "$SRC/ModifierMonitor.m" "$SRC/PBLoginItem.m" "$SRC/AppDelegate.m" "$SRC/main.m" \
   -framework AppKit -framework Foundation -framework CoreFoundation \
   -framework IOKit -framework QuartzCore -framework CoreGraphics -framework CoreAudio \
   -framework Speech -framework AVFoundation -framework ApplicationServices \
