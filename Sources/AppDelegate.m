@@ -17,6 +17,7 @@
 #import "ModifierMonitor.h"
 #import "PBProcess.h"
 #import "PBLoginItem.h"
+#import "PBBreakReminder.h"
 #import "AppIndex.h"
 #import "AgentCoordinator.h"
 #import "VoiceNotes.h"
@@ -38,14 +39,9 @@
 @property (nonatomic, strong) NSTask               *caffeine;
 @property (nonatomic, strong) PBVoiceNotes         *voiceNotes;
 @property (nonatomic, strong) PBLoginItem          *loginItem;
+@property (nonatomic, strong) PBBreakReminder       *breakReminder;
 @property (nonatomic) BOOL                          showTopProc;
 @end
-
-// Compact "1h 26m" / "44m" duration for the break banner.
-static NSString *PBHumanDuration(double sec) {
-    int s = sec < 0 ? 0 : (int)sec, h = s / 3600, m = (s % 3600) / 60;
-    return h > 0 ? [NSString stringWithFormat:@"%dh %dm", h, m] : [NSString stringWithFormat:@"%dm", m];
-}
 
 @implementation AppDelegate {
     double      _cores[128];
@@ -53,7 +49,6 @@ static NSString *PBHumanDuration(double sec) {
     double      _topCPU;
     NSInteger   _tick;
     double      _sessionStart, _lastActive;   // active working-session tracking (system input idle)
-    double      _nextBreakAt;                  // session-seconds at which the next break banner fires
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
     NSMenuItem *_fnItem;
@@ -332,7 +327,7 @@ static NSString *PBHumanDuration(double sec) {
         // grows with the uninterrupted working session. See README.
         if (self.pomo.state == PomoIdle && self.pomo.adaptiveLength)
             self.pomo.workMinutes = [Pomodoro adaptiveWorkMinutes:session];
-        [self updateBreakReminder:session];
+        [self.breakReminder update:session];
     }
 
     NSString *tp = [NSString stringWithUTF8String:_topBuf] ?: @"";
@@ -480,32 +475,22 @@ static NSString *PBHumanDuration(double sec) {
 
 #pragma mark - session break reminder (unmutable)
 
-// When the uninterrupted working session passes the configured threshold
-// (default 1h20m), flash a full-width "take a break" banner on the bar and
-// re-arm it to repeat every 15 min until the session resets (a >5-min input gap).
-- (void)updateBreakReminder:(double)session {
-    if (getenv("PULSEBAR_SELFQUIT")) return;
-    NSInteger thrMin = PBDefaultsInteger(PBKeyBreakReminder, PBDefaultBreakReminderMinutes);
-    double thr = (thrMin > 0 ? thrMin : PBDefaultBreakReminderMinutes) * 60.0, repeat = 15 * 60.0;
-    if (session < thr) { _nextBreakAt = thr; return; }      // below threshold → arm for the first crossing
-    if (_nextBreakAt < thr) _nextBreakAt = thr;
-    if (session + 0.5 >= _nextBreakAt) {
-        _nextBreakAt = session + repeat;
-        [self fireBreakReminder:session];
+// Lazily build the reminder, wiring its show/hide to the bar + mirror banner.
+- (PBBreakReminder *)breakReminder {
+    if (!_breakReminder) {
+        _breakReminder = [PBBreakReminder new];
+        __weak AppDelegate *ws = self;
+        _breakReminder.onShow = ^(NSString *txt) {
+            ws.barView.breakReminderText = txt;   ws.barView.breakReminder = YES;
+            ws.mirror.bar.breakReminderText = txt; ws.mirror.bar.breakReminder = YES;
+            [ws.barView setNeedsDisplay:YES]; [ws.mirror.bar setNeedsDisplay:YES];
+        };
+        _breakReminder.onHide = ^{
+            ws.barView.breakReminder = NO; ws.mirror.bar.breakReminder = NO;
+            [ws.barView setNeedsDisplay:YES]; [ws.mirror.bar setNeedsDisplay:YES];
+        };
     }
-}
-- (void)fireBreakReminder:(double)session {
-    NSString *txt = PBHumanDuration(session);
-    self.barView.breakReminderText = txt;   self.barView.breakReminder = YES;
-    self.mirror.bar.breakReminderText = txt; self.mirror.bar.breakReminder = YES;
-    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideBreakReminder) object:nil];
-    [self performSelector:@selector(hideBreakReminder) withObject:nil afterDelay:12.0];
-    PBLog(@"break reminder shown (session %@)", txt);
-}
-- (void)hideBreakReminder {
-    self.barView.breakReminder = NO; self.mirror.bar.breakReminder = NO;
-    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    return _breakReminder;
 }
 
 #pragma mark - modifier shortcuts (⌘ → recent mode · ⌥ → app overlay)
@@ -602,7 +587,7 @@ static NSString *PBHumanDuration(double sec) {
 }
 - (void)settingsSetBreakReminderMinutes:(NSInteger)m {
     [NSUserDefaults.standardUserDefaults setInteger:MAX(1, m) forKey:PBKeyBreakReminder];
-    _nextBreakAt = 0;   // re-arm against the new threshold on the next tick
+    [self.breakReminder rearm];   // re-arm against the new threshold on the next tick
 }
 - (CGFloat)settingsSafeLeft  { return self.barView.safeAreaLeftInset; }
 - (CGFloat)settingsSafeRight { return self.barView.safeAreaRightInset; }
