@@ -230,6 +230,13 @@
 
 #pragma mark - desktop mirror (companion window — exact, clickable copy of the bar)
 
+// Apply a change to the live bar AND the desktop mirror together, then redraw
+// both — so the two never drift out of sync (a recurring copy-paste bug source).
+- (void)broadcast:(void (^)(BarView *bar))apply {
+    apply(self.barView); [self.barView setNeedsDisplay:YES];
+    if (self.mirror.bar) { apply(self.mirror.bar); [self.mirror.bar setNeedsDisplay:YES]; }
+}
+
 - (void)showMirror {
     if (!self.mirror) {
         self.mirror = [[PBMirrorController alloc] initWithActionDelegate:self pomodoro:self.pomo mode:self.barView.mode];
@@ -248,10 +255,9 @@
 // Compact layout — icon-only active pill + icon-only action tiles. Applies to the
 // live bar and the mirror, persists, and keeps the menu check in sync.
 - (void)setCompact:(BOOL)on {
-    self.barView.compactLayout = on; self.mirror.bar.compactLayout = on;
+    [self broadcast:^(BarView *b){ b.compactLayout = on; }];
     _compactItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
     [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyCompact];
-    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
 }
 - (void)toggleCompact { [self setCompact:!self.barView.compactLayout]; }
 
@@ -364,8 +370,7 @@
         self.voiceNotes = [PBVoiceNotes new];
         __weak AppDelegate *ws = self;
         self.voiceNotes.onStateChange = ^(BOOL rec) {
-            ws.barView.noteRecording = rec; ws.mirror.bar.noteRecording = rec;
-            [ws.barView setNeedsDisplay:YES]; [ws.mirror.bar setNeedsDisplay:YES];
+            [ws broadcast:^(BarView *b){ b.noteRecording = rec; }];
         };
     }
     [self.voiceNotes start];
@@ -428,9 +433,8 @@
         @try { [t launch]; } @catch (id e) { t = nil; }
         self.caffeine = t;
     }
-    self.barView.caffeinated = (self.caffeine != nil);
-    self.mirror.bar.caffeinated = (self.caffeine != nil);
-    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    BOOL on = (self.caffeine != nil);
+    [self broadcast:^(BarView *b){ b.caffeinated = on; }];
 }
 
 - (void)barRunShortcut:(NSString *)a {
@@ -512,14 +516,11 @@
 - (void)showAppOverlay {
     NSRunningApplication *app = [NSWorkspace sharedWorkspace].frontmostApplication;
     NSString *name = app.localizedName ?: @"App"; NSImage *icon = app.icon;
-    self.barView.appName = name;   self.barView.appIcon = icon;   self.barView.appOverlay = YES;
-    self.mirror.bar.appName = name; self.mirror.bar.appIcon = icon; self.mirror.bar.appOverlay = YES;
-    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    [self broadcast:^(BarView *b){ b.appName = name; b.appIcon = icon; b.appOverlay = YES; }];
 }
 - (void)hideAppOverlay {
     if (!self.barView.appOverlay) return;
-    self.barView.appOverlay = NO; self.mirror.bar.appOverlay = NO;
-    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    [self broadcast:^(BarView *b){ b.appOverlay = NO; }];
 }
 - (void)toggleModifiers {
     BOOL on = ![NSUserDefaults.standardUserDefaults boolForKey:PBKeyModifiers];
@@ -592,13 +593,11 @@
 - (CGFloat)settingsSafeLeft  { return self.barView.safeAreaLeftInset; }
 - (CGFloat)settingsSafeRight { return self.barView.safeAreaRightInset; }
 - (void)settingsSetSafeLeft:(CGFloat)px {
-    self.barView.safeAreaLeftInset = px; self.mirror.bar.safeAreaLeftInset = px;
-    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    [self broadcast:^(BarView *b){ b.safeAreaLeftInset = px; }];
     [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)lround(px) forKey:PBKeySafeLeft];
 }
 - (void)settingsSetSafeRight:(CGFloat)px {
-    self.barView.safeAreaRightInset = px; self.mirror.bar.safeAreaRightInset = px;
-    [self.barView setNeedsDisplay:YES]; [self.mirror.bar setNeedsDisplay:YES];
+    [self broadcast:^(BarView *b){ b.safeAreaRightInset = px; }];
     [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)lround(px) forKey:PBKeySafeRight];
 }
 - (BOOL)settingsCompact { return self.barView.compactLayout; }
