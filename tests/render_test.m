@@ -13,17 +13,7 @@ static NSImage *renderMode(BarView *v, NSInteger mode) {
     return [[NSImage alloc] initWithData:pdf];
 }
 
-int main(void) { @autoreleasepool {
-    [NSApplication sharedApplication];
-
-    CGFloat W = 1004, H = 30, S = 2.6;
-    BarView *v = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, W, H)];
-    Pomodoro *pomo = [Pomodoro new]; [pomo toggle]; v.pomodoro = pomo;
-    v.caffeinated = YES;
-    v.uptime = 3 * 86400 + 4 * 3600 + 600;
-
-    PBFeedSample(v, 70);
-
+static void writeGrid(BarView *v, CGFloat W, CGFloat H, CGFloat S, NSString *path) {
     int rows = (int)BarModeCount, gap = 8;
     int rowPix = (int)(H * S), pw = (int)(W * S), ph = rows * rowPix + (rows - 1) * gap;
     NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:pw pixelsHigh:ph
@@ -33,12 +23,30 @@ int main(void) { @autoreleasepool {
     [[NSColor blackColor] setFill]; NSRectFill(NSMakeRect(0, 0, pw, ph));
     for (int m = 0; m < rows; m++) {
         NSImage *img = renderMode(v, m);
-        CGFloat y = ph - (m + 1) * rowPix - m * gap;     // top-to-bottom
+        CGFloat y = ph - (m + 1) * rowPix - m * gap;
         [img drawInRect:NSMakeRect(0, y, pw, rowPix) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
     }
     [NSGraphicsContext restoreGraphicsState];
-    [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:@"/tmp/pulsebar_modes.png" atomically:YES];
-    printf("wrote /tmp/pulsebar_modes.png (%dx%d, %d modes)\n", pw, ph, rows);
+    [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:path atomically:YES];
+    printf("wrote %s (%dx%d)\n", path.UTF8String, pw, ph);
+}
+
+int main(void) { @autoreleasepool {
+    [NSApplication sharedApplication];
+
+    CGFloat W = 1004, H = 30, S = 2.6;
+    BarView *v = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, W, H)];
+    Pomodoro *pomo = [Pomodoro new]; [pomo toggle]; v.pomodoro = pomo;
+    v.caffeinated = YES;
+    v.uptime = 3 * 86400 + 4 * 3600 + 600;
+    v.safeAreaLeftInset = 0; v.safeAreaRightInset = 110;   // default fit: clears the collapsed Control Strip
+
+    PBFeedSample(v, 70);
+
+    writeGrid(v, W, H, S, @"/tmp/pulsebar_modes.png");      // full layout
+    v.compactLayout = YES;
+    writeGrid(v, W, H, S, @"/tmp/pulsebar_compact.png");    // compact: icon-only pill + actions
+    v.compactLayout = NO;
 
     // App overlay (⌥ held)
     [v setMode:BarModeSystem animated:NO]; v.appName = @"Telegram"; v.appOverlay = YES;
@@ -53,5 +61,36 @@ int main(void) { @autoreleasepool {
     [NSGraphicsContext restoreGraphicsState];
     [[fr representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:@"/tmp/pulsebar_fn.png" atomically:YES];
     printf("wrote /tmp/pulsebar_fn.png\n");
+
+    // Break-reminder banner (unmutable session-length nudge)
+    v.appOverlay = NO; [v setMode:BarModeProductivity animated:NO];
+    v.breakReminderText = @"1h 26m"; v.breakReminder = YES;
+    NSImage *br = [[NSImage alloc] initWithData:[v dataWithPDFInsideRect:v.bounds]];
+    NSBitmapImageRep *brr = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:fw pixelsHigh:fh
+        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+    NSGraphicsContext *brgc = [NSGraphicsContext graphicsContextWithBitmapImageRep:brr];
+    [NSGraphicsContext saveGraphicsState]; [NSGraphicsContext setCurrentContext:brgc];
+    [[NSColor blackColor] setFill]; NSRectFill(NSMakeRect(0, 0, fw, fh));
+    [br drawInRect:NSMakeRect(0, 0, fw, fh) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
+    [NSGraphicsContext restoreGraphicsState];
+    [[brr representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:@"/tmp/pulsebar_break.png" atomically:YES];
+    printf("wrote /tmp/pulsebar_break.png\n");
+
+    // Arrange mode (long-press the active pill → drag tiles to reorder)
+    v.breakReminder = NO; v.compactLayout = NO; [v setMode:BarModeSystem animated:NO];
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    [v performSelector:@selector(enterArrange)];
+    #pragma clang diagnostic pop
+    NSImage *ar = [[NSImage alloc] initWithData:[v dataWithPDFInsideRect:v.bounds]];
+    NSBitmapImageRep *arr = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:fw pixelsHigh:fh
+        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+    NSGraphicsContext *argc = [NSGraphicsContext graphicsContextWithBitmapImageRep:arr];
+    [NSGraphicsContext saveGraphicsState]; [NSGraphicsContext setCurrentContext:argc];
+    [[NSColor blackColor] setFill]; NSRectFill(NSMakeRect(0, 0, fw, fh));
+    [ar drawInRect:NSMakeRect(0, 0, fw, fh) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
+    [NSGraphicsContext restoreGraphicsState];
+    [[arr representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:@"/tmp/pulsebar_arrange.png" atomically:YES];
+    printf("wrote /tmp/pulsebar_arrange.png\n");
     return 0;
 }}
