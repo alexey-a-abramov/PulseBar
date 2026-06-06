@@ -38,9 +38,12 @@ SwiftPM — just `clang` over `Sources/*.m`.
   Build & run it, then look at the PNG:
   ```bash
   clang -fobjc-arc -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
-    tests/render_test.m Sources/BarView.m Sources/Pomodoro.m Sources/PreviewData.m Sources/AppIndex.m Sources/Log.m \
+    tests/render_test.m Sources/BarView.m Sources/PBLayout.m Sources/PBFormat.m Sources/PBDefaults.m \
+    Sources/Pomodoro.m Sources/PreviewData.m Sources/AppIndex.m Sources/Log.m \
     -framework AppKit -framework Foundation -o build/render_test && ./build/render_test
   ```
+  (BarView now links the PBLayout engine + PBFormat helpers — keep them in the
+  compile list, and diff the PNGs against a pre-change baseline after refactors.)
 - The **Desktop Mirror** (a floating panel, shown by default) is an exact, clickable
   copy of the bar. `screencapture -x /tmp/d.png` captures it for inspection.
 
@@ -83,11 +86,19 @@ Sources/
                              ModifierMonitor, and the agent to AgentCoordinator.
                              Also: safe-area "Fit" insets, compact toggle, and the
                              unmutable session break reminder.
-  BarView.m                  all rendering + hit-testing. Modes, accordion tabs,
-                             tiles, sliders, swipe, size-aware priority layout,
-                             safe-area insets, compact (icon-only) layout, and
-                             drag-to-arrange (long-press the active pill).
+  BarView.m                  rendering + hit-testing only. Modes, accordion tabs,
+                             tiles, sliders, swipe, safe-area insets, compact
+                             (icon-only) layout, drag-to-arrange (long-press the
+                             active pill). Drives the engine via PBLayout; the
+                             BarView(Layout) category is a thin facade over it.
                              (Drawn in a flipped view.)
+  PBLayout.m                 AppKit-free tile model + size-aware packing engine:
+                             TileType/TileDef, tilesForMode, override keys,
+                             setOrderOverride, packVisible. Unit-tested directly.
+  PBFormat.m                 pure value formatters (rate/GB/clock/uptime)
+  PBProcess.m                shared NSTask helpers (PBRunCapture / PBLaunchDetached)
+  PBLoginItem.m              "start at login" LaunchAgent (install/remove)
+  PBBreakReminder.m          session-length "take a break" nudge (threshold + repeat)
   Stats.m                    cpu / per-core / mem(+swap) / net / battery / gpu /
                              disk io+space / top-process / uptime  (pure C, testable)
   Controls.m                 volume·mute (CoreAudio) · brightness (DisplayServices)

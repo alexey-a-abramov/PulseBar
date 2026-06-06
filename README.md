@@ -129,7 +129,10 @@ Quit via the `▦` menu-bar icon → **Quit PulseBar** (or `pkill -x PulseBar`, 
 Sources/
   main.m                    accessory NSApplication (no Dock)
   AppDelegate.m             SPI presentation · 1 Hz sampling · actions · full-bar · LaunchAgent
-  BarView.m                 interactive tile rendering + hit-testing · size-aware layout
+  BarView.m                 interactive tile rendering + hit-testing (drives the PBLayout engine)
+  PBLayout.m                AppKit-free tile model + size-aware packing engine (unit-tested)
+  PBFormat.m · PBProcess.m  pure value formatters · shared NSTask helpers
+  PBLoginItem.m · PBBreakReminder.m  login LaunchAgent · session break-reminder nudge
   Stats.m                   cpu/per-core/mem/net/battery/gpu/disk/top-process
   Controls.m                volume·mute (CoreAudio) · brightness (DisplayServices) · media (MediaRemote)
   Pomodoro.m                work/break timer model
