@@ -9,6 +9,7 @@
 #import "PBDefaults.h"
 #import "AppIndex.h"
 #import "Log.h"
+#import "PBFormat.h"
 
 NSString * const PBLayoutChangedNotification = @"PBLayoutChanged";
 
@@ -29,22 +30,6 @@ typedef NS_ENUM(NSInteger, TileType) {
     TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TAPP_HIDE, TAPP_QUIT, TTAB
 };
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
-
-static NSString *fmtRate(double bps) {
-    const char *u[] = {"B", "K", "M", "G"};
-    int i = 0; double v = bps;
-    while (v >= 1024.0 && i < 3) { v /= 1024.0; i++; }
-    return (i == 0) ? [NSString stringWithFormat:@"%.0f%s", v, u[i]]
-                    : [NSString stringWithFormat:@"%.1f%s", v, u[i]];
-}
-static double toGB(uint64_t b) { return (double)b / (1024.0 * 1024.0 * 1024.0); }
-static NSString *fmtClock(double sec) { int s = sec < 0 ? 0 : (int)sec; return [NSString stringWithFormat:@"%d:%02d", s / 60, s % 60]; }
-static NSString *fmtUptime(double sec) {
-    int s = (int)sec, d = s / 86400, h = (s % 86400) / 3600, m = (s % 3600) / 60;
-    if (d > 0) return [NSString stringWithFormat:@"%dd %dh", d, h];
-    if (h > 0) return [NSString stringWithFormat:@"%dh %dm", h, m];
-    return [NSString stringWithFormat:@"%dm", m];
-}
 
 static NSString *modeIcon(NSInteger m) {
     switch (m) {
@@ -592,20 +577,20 @@ static int viewCount(TileType t) {
             [self t:[NSString stringWithFormat:@"%.0f%%", _mem.usedPct] rx:NSMaxX(r) - 6 y:1 sz:12 w:NSFontWeightBold c:[self load:_mem.usedPct]];
             if (_view[TMEM] == 0) {                         // usage: bar + used/total (+ swap hint)
                 CGFloat swapX = r.origin.x + 34, swapMaxW = (NSMaxX(r) - 6 - 32) - swapX;
-                NSString *swapStr = [NSString stringWithFormat:@"swap %.0fG", toGB(_mem.swapUsedBytes)];
+                NSString *swapStr = [NSString stringWithFormat:@"swap %.0fG", PBToGB(_mem.swapUsedBytes)];
                 if (_mem.swapUsedBytes > 0 && [swapStr sizeWithAttributes:@{ NSFontAttributeName:monoFont(6.5, NSFontWeightBold) }].width <= swapMaxW)
                     [self t:swapStr at:NSMakePoint(swapX, 3) sz:6.5 w:NSFontWeightBold c:orange];
                 CGFloat bx = r.origin.x + 6, bw = r.size.width - 12, by = 17, bh = 8;
                 [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:4 yRadius:4] fill];
                 CGFloat fw = bw * MAX(0, MIN(1, _mem.usedPct / 100.0));
                 if (fw > 1) { [[[self load:_mem.usedPct] colorWithAlphaComponent:0.85] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, fw, bh) xRadius:4 yRadius:4] fill]; }
-                [self t:[NSString stringWithFormat:@"%.1f/%.0fG", toGB(_mem.usedBytes), toGB(_mem.totalBytes)] at:NSMakePoint(bx + 3, by - 0.5) sz:7 w:NSFontWeightMedium c:[NSColor colorWithCalibratedWhite:0.96 alpha:0.95]];
+                [self t:[NSString stringWithFormat:@"%.1f/%.0fG", PBToGB(_mem.usedBytes), PBToGB(_mem.totalBytes)] at:NSMakePoint(bx + 3, by - 0.5) sz:7 w:NSFontWeightMedium c:[NSColor colorWithCalibratedWhite:0.96 alpha:0.95]];
             } else {                                         // pressure + swap
                 NSColor *pc = _mem.pressure >= 4 ? [self pink] : (_mem.pressure >= 2 ? orange : [self green]);
                 NSString *pw = _mem.pressure >= 4 ? @"critical" : (_mem.pressure >= 2 ? @"warning" : @"normal");
                 [pc setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(r.origin.x + 6, 13, 6, 6)] fill];
                 [self t:pw at:NSMakePoint(r.origin.x + 15, 11) sz:8 w:NSFontWeightSemibold c:pc];
-                [self t:[NSString stringWithFormat:@"swap %.1fG", toGB(_mem.swapUsedBytes)] at:NSMakePoint(r.origin.x + 6, 21) sz:7.5 w:NSFontWeightMedium c:orange];
+                [self t:[NSString stringWithFormat:@"swap %.1fG", PBToGB(_mem.swapUsedBytes)] at:NSMakePoint(r.origin.x + 6, 21) sz:7.5 w:NSFontWeightMedium c:orange];
             }
             break; }
         case TGPU: {
@@ -623,27 +608,27 @@ static int viewCount(TileType t) {
         case TNET: {
             [self label:@"NET" in:r];
             if (_view[TNET] == 0) {                          // dynamic: rates + sparkline
-                [self t:[NSString stringWithFormat:@"↓%@", fmtRate(_net.downBps)] at:NSMakePoint(r.origin.x + 6, 12) sz:8 w:NSFontWeightSemibold c:[self cyan]];
-                [self t:[NSString stringWithFormat:@"↑%@", fmtRate(_net.upBps)]   at:NSMakePoint(r.origin.x + 6, 21) sz:8 w:NSFontWeightSemibold c:[self pink]];
+                [self t:[NSString stringWithFormat:@"↓%@", PBFmtRate(_net.downBps)] at:NSMakePoint(r.origin.x + 6, 12) sz:8 w:NSFontWeightSemibold c:[self cyan]];
+                [self t:[NSString stringWithFormat:@"↑%@", PBFmtRate(_net.upBps)]   at:NSMakePoint(r.origin.x + 6, 21) sz:8 w:NSFontWeightSemibold c:[self pink]];
                 CGFloat sx = r.origin.x + r.size.width * 0.52;
                 [self spark:_netHist rect:NSMakeRect(sx, 13, NSMaxX(r) - 6 - sx, 15) color:[self cyan] max:_netMax];
             } else {                                         // fundamental: larger rate readout
-                [self t:[NSString stringWithFormat:@"↓ %@", fmtRate(_net.downBps)] at:NSMakePoint(r.origin.x + 6, 11) sz:10 w:NSFontWeightSemibold c:[self cyan]];
-                [self t:[NSString stringWithFormat:@"↑ %@", fmtRate(_net.upBps)]   at:NSMakePoint(r.origin.x + 6, 21) sz:10 w:NSFontWeightSemibold c:[self pink]];
+                [self t:[NSString stringWithFormat:@"↓ %@", PBFmtRate(_net.downBps)] at:NSMakePoint(r.origin.x + 6, 11) sz:10 w:NSFontWeightSemibold c:[self cyan]];
+                [self t:[NSString stringWithFormat:@"↑ %@", PBFmtRate(_net.upBps)]   at:NSMakePoint(r.origin.x + 6, 21) sz:10 w:NSFontWeightSemibold c:[self pink]];
             }
             break; }
         case TDISK: {
             [self label:@"DISK" in:r];
             NSColor *dc = [NSColor colorWithSRGBRed:0.45 green:0.80 blue:0.92 alpha:1];
             if (_view[TDISK] == 0) {                         // dynamic: R/W rates + free
-                if (_space.totalBytes) [self t:[NSString stringWithFormat:@"%.0fG", toGB(_space.freeBytes)] rx:NSMaxX(r) - 6 y:1 sz:11 w:NSFontWeightBold c:dc];
-                [self t:[NSString stringWithFormat:@"R %@", fmtRate(_disk.readBps)]  at:NSMakePoint(r.origin.x + 6, 12) sz:8 w:NSFontWeightSemibold c:[self accent]];
-                [self t:[NSString stringWithFormat:@"W %@", fmtRate(_disk.writeBps)] at:NSMakePoint(r.origin.x + 6, 21) sz:8 w:NSFontWeightSemibold c:[self pink]];
+                if (_space.totalBytes) [self t:[NSString stringWithFormat:@"%.0fG", PBToGB(_space.freeBytes)] rx:NSMaxX(r) - 6 y:1 sz:11 w:NSFontWeightBold c:dc];
+                [self t:[NSString stringWithFormat:@"R %@", PBFmtRate(_disk.readBps)]  at:NSMakePoint(r.origin.x + 6, 12) sz:8 w:NSFontWeightSemibold c:[self accent]];
+                [self t:[NSString stringWithFormat:@"W %@", PBFmtRate(_disk.writeBps)] at:NSMakePoint(r.origin.x + 6, 21) sz:8 w:NSFontWeightSemibold c:[self pink]];
                 [self t:@"free" rx:NSMaxX(r) - 6 y:21 sz:6.5 w:NSFontWeightBold c:[self dim]];
             } else {                                         // fundamental: free/used space bar
                 double frac = _space.totalBytes ? (double)(_space.totalBytes - _space.freeBytes) / _space.totalBytes : 0;
-                [self t:[NSString stringWithFormat:@"%.0fG free", toGB(_space.freeBytes)] at:NSMakePoint(r.origin.x + 6, 11) sz:8.5 w:NSFontWeightSemibold c:dc];
-                [self t:[NSString stringWithFormat:@"of %.0fG", toGB(_space.totalBytes)] rx:NSMaxX(r) - 6 y:12 sz:7 w:NSFontWeightMedium c:[self dim]];
+                [self t:[NSString stringWithFormat:@"%.0fG free", PBToGB(_space.freeBytes)] at:NSMakePoint(r.origin.x + 6, 11) sz:8.5 w:NSFontWeightSemibold c:dc];
+                [self t:[NSString stringWithFormat:@"of %.0fG", PBToGB(_space.totalBytes)] rx:NSMaxX(r) - 6 y:12 sz:7 w:NSFontWeightMedium c:[self dim]];
                 CGFloat bx = r.origin.x + 6, bw = r.size.width - 12, by = 21, bh = 6;
                 [[NSColor colorWithCalibratedWhite:1 alpha:0.10] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:3 yRadius:3] fill];
                 CGFloat fw = bw * MAX(0, MIN(1, frac));
@@ -662,8 +647,8 @@ static int viewCount(TileType t) {
                     if (_npDuration > 1) {
                         [self clip:_npTitle at:NSMakePoint(tx, 3) sz:9 w:NSFontWeightSemibold c:[NSColor whiteColor] maxW:tw];
                         double frac = _npElapsed / _npDuration; if (frac < 0) frac = 0; if (frac > 1) frac = 1;
-                        [self t:fmtClock(_npElapsed) at:NSMakePoint(tx, 18) sz:7 w:NSFontWeightMedium c:[self dim]];
-                        [self t:fmtClock(_npDuration) rx:tx + tw y:18 sz:7 w:NSFontWeightMedium c:[self dim]];
+                        [self t:PBFmtClock(_npElapsed) at:NSMakePoint(tx, 18) sz:7 w:NSFontWeightMedium c:[self dim]];
+                        [self t:PBFmtClock(_npDuration) rx:tx + tw y:18 sz:7 w:NSFontWeightMedium c:[self dim]];
                         CGFloat bx = tx + 26, bw = tw - 52;
                         if (bw > 8) {
                             [[NSColor colorWithCalibratedWhite:1 alpha:0.14] setFill];
@@ -718,15 +703,15 @@ static int viewCount(TileType t) {
             // One chip, tap to switch between total uptime and the active session.
             if (_view[TUPTIME] == 0) {
                 [self label:@"UPTIME" in:r];
-                [self t:fmtUptime(self.uptime) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self accent]];
+                [self t:PBFmtUptime(self.uptime) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self accent]];
             } else {
                 [self label:@"SESSION" in:r];
-                [self t:fmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
+                [self t:PBFmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
             }
             break; }
         case TSESSION: {   // dedicated active-working-session chip (e.g. for Focus mode)
             [self label:@"SESSION" in:r];
-            [self t:fmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
+            [self t:PBFmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
             break; }
         case TNOTE: {   // hold to record a voice side-note (walkie-talkie)
             BOOL rec = self.noteRecording;
