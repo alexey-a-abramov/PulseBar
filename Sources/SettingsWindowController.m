@@ -5,6 +5,7 @@
 //
 #import "SettingsWindowController.h"
 #import "VoiceNotes.h"
+#import "PBDefaults.h"
 #import "Log.h"
 
 @interface SettingsWindowController () <NSTextFieldDelegate>
@@ -135,10 +136,10 @@ static NSTextField *help(NSString *s, NSRect f) {
 
     // Right squeeze (the one that brings the agent orb back into view)
     [c addSubview:label(@"Right squeeze", NSMakeRect(20, top - 98, 100, 18), 11, NO)];
-    _rightSlider = [NSSlider sliderWithValue:110 minValue:0 maxValue:232 target:self action:@selector(changeRight:)];
+    _rightSlider = [NSSlider sliderWithValue:PBDefaultSafeRight minValue:0 maxValue:232 target:self action:@selector(changeRight:)];
     _rightSlider.frame = NSMakeRect(125, top - 100, W - 125 - 66, 20); _rightSlider.continuous = YES;
     [c addSubview:_rightSlider];
-    _rightVal = label(@"110 px", NSMakeRect(W - 58, top - 98, 50, 18), 11, NO); [c addSubview:_rightVal];
+    _rightVal = label([NSString stringWithFormat:@"%ld px", (long)PBDefaultSafeRight], NSMakeRect(W - 58, top - 98, 50, 18), 11, NO); [c addSubview:_rightVal];
     [c addSubview:help(@"Clears the system Control Strip on the right (≈110px collapsed, up to ≈232px expanded) so tiles and the agent orb aren't covered.",
                        NSMakeRect(20, top - 120, W - 40, 16))];
 
@@ -339,7 +340,7 @@ static NSTextField *help(NSString *s, NSRect f) {
     [_delegate settingsSetSafeRight:(CGFloat)s.doubleValue];
 }
 - (void)resetFit:(id)sender {
-    _leftSlider.doubleValue = 0; _rightSlider.doubleValue = 110;
+    _leftSlider.doubleValue = PBDefaultSafeLeft; _rightSlider.doubleValue = PBDefaultSafeRight;
     [self changeLeft:_leftSlider]; [self changeRight:_rightSlider];
 }
 - (void)toggleCompact:(NSButton *)b { [_delegate settingsSetCompact:(b.state == NSControlStateValueOn)]; }

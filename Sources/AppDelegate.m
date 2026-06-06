@@ -85,12 +85,12 @@ static NSString *PBHumanDuration(double sec) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     { NSString *mapp = [ud stringForKey:PBKeyMediaApp]; if (mapp.length) CtlSetMediaApp(mapp); }   // default Spotify
     self.pomo = [Pomodoro new];
-    self.pomo.workMinutes  = [ud objectForKey:PBKeyWork]  ? [ud integerForKey:PBKeyWork]  : 25;
-    self.pomo.breakMinutes = [ud objectForKey:PBKeyBreak] ? [ud integerForKey:PBKeyBreak] : 5;
-    self.pomo.adaptiveLength = [ud objectForKey:PBKeyAdaptive] ? [ud boolForKey:PBKeyAdaptive] : YES;
+    self.pomo.workMinutes  = PBDefaultsInteger(PBKeyWork,  PBDefaultWorkMinutes);
+    self.pomo.breakMinutes = PBDefaultsInteger(PBKeyBreak, PBDefaultBreakMinutes);
+    self.pomo.adaptiveLength = PBDefaultsBool(PBKeyAdaptive, YES);
     __weak AppDelegate *ws = self;
     self.pomo.onComplete = ^(BOOL wasWork) { [ws pomodoroFinished:wasWork]; };
-    self.showTopProc = [ud objectForKey:PBKeyShowTopProc] ? [ud boolForKey:PBKeyShowTopProc] : YES;
+    self.showTopProc = PBDefaultsBool(PBKeyShowTopProc, YES);
 
     [self buildBars];
     [self.barView setMode:[ud integerForKey:PBKeyMode] animated:NO];   // restore last mode
@@ -171,8 +171,8 @@ static NSString *PBHumanDuration(double sec) {
     // LEFT reserve is needed by default. Both are live-adjustable in Settings → Fit
     // (and via `defaults write com.fun.pulsebar safeAreaRight <px>`).
     NSUserDefaults *du = NSUserDefaults.standardUserDefaults;
-    self.barView.safeAreaLeftInset  = [du objectForKey:PBKeySafeLeft]  ? [du integerForKey:PBKeySafeLeft]  : 0;
-    self.barView.safeAreaRightInset = [du objectForKey:PBKeySafeRight] ? [du integerForKey:PBKeySafeRight] : 110;
+    self.barView.safeAreaLeftInset  = PBDefaultsInteger(PBKeySafeLeft,  PBDefaultSafeLeft);
+    self.barView.safeAreaRightInset = PBDefaultsInteger(PBKeySafeRight, PBDefaultSafeRight);
     self.barView.compactLayout = [du boolForKey:PBKeyCompact];   // icon-only pill + actions when space is tight
     self.presenter = [[PBTouchBarPresenter alloc] initWithContentView:self.barView];
 }
@@ -483,9 +483,8 @@ static NSString *PBHumanDuration(double sec) {
 // re-arm it to repeat every 15 min until the session resets (a >5-min input gap).
 - (void)updateBreakReminder:(double)session {
     if (getenv("PULSEBAR_SELFQUIT")) return;
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    NSInteger thrMin = [ud objectForKey:PBKeyBreakReminder] ? [ud integerForKey:PBKeyBreakReminder] : 80;
-    double thr = (thrMin > 0 ? thrMin : 80) * 60.0, repeat = 15 * 60.0;
+    NSInteger thrMin = PBDefaultsInteger(PBKeyBreakReminder, PBDefaultBreakReminderMinutes);
+    double thr = (thrMin > 0 ? thrMin : PBDefaultBreakReminderMinutes) * 60.0, repeat = 15 * 60.0;
     if (session < thr) { _nextBreakAt = thr; return; }      // below threshold → arm for the first crossing
     if (_nextBreakAt < thr) _nextBreakAt = thr;
     if (session + 0.5 >= _nextBreakAt) {
@@ -596,8 +595,7 @@ static NSString *PBHumanDuration(double sec) {
     [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyAdaptive];
 }
 - (NSInteger)settingsBreakReminderMinutes {
-    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    return [ud objectForKey:PBKeyBreakReminder] ? [ud integerForKey:PBKeyBreakReminder] : 80;
+    return PBDefaultsInteger(PBKeyBreakReminder, PBDefaultBreakReminderMinutes);
 }
 - (void)settingsSetBreakReminderMinutes:(NSInteger)m {
     [NSUserDefaults.standardUserDefaults setInteger:MAX(1, m) forKey:PBKeyBreakReminder];
