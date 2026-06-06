@@ -72,19 +72,29 @@ right. Open **⚙ Settings → "Take over the entire Touch Bar"** to hide it so 
 fills the whole width *and* stays put across all apps. Because PulseBar has its own
 volume/brightness/media, you lose nothing.
 
-It's **reversible** and conservative: it backs up your current `PresentationModeGlobal`,
-sets `app`, and restarts the Touch Bar agent; turning it off (or quitting PulseBar)
-restores your Control Strip so you're never stuck. It does **not** touch your per-app
-Touch Bar overrides.
+PulseBar hides the Control Strip the no-flicker way — it **presents with `placement:1`**
+(MTMR's trick), which suppresses it natively without restarting the Touch Bar agent —
+and suppresses the system close box (✕) at setup. If a stray ✕ or Control Strip still
+creeps in, **Settings → Fit** lets you *squeeze* the layout (live slider) so every tile
+and the agent orb stay clear, and the menu's **"Re-take Over the Touch Bar"** (⌘R) does
+the heavy reset (writes `PresentationModeGlobal=app` + restarts the agent). All
+reversible: it backs up your previous value and restores it on quit. It does **not**
+touch your per-app Touch Bar overrides.
 
 ## Settings window (the ⚙ button)
 
-Tapping the gear on the Touch Bar brings up a desktop window with:
-- **Take over the entire Touch Bar** (full-bar takeover, above)
-- **Start at login** — installs/removes a LaunchAgent (`~/Library/LaunchAgents/com.fun.pulsebar.plist`)
-- **Show top CPU process** — toggle off to skip the per-tick `ps` sampling (saves a little CPU)
-- **Pomodoro** work / break durations
-- **Quit PulseBar**
+Tapping the gear (or the `▦` menu bar icon → Settings) brings up a sectioned desktop
+window:
+- **General** — full-bar takeover, desktop mirror, modifier shortcuts (⌃ peek · ⌥ app),
+  show top CPU process, start at login, media app.
+- **Fit** — *squeeze* the layout around residual system chrome (live sliders, previewed
+  on the mirror) and toggle **Compact layout** (icon-only mode pill + action tiles).
+- **Focus** — Pomodoro work/break, adaptive length, and the unmutable **break reminder**
+  (a full-width "take a break" nudge after a long unbroken session, repeating every 15 min).
+- **Notes** — your captured side-notes history, with CSV export.
+
+Other shortcuts: hold **⌃** to peek your previous mode (release to snap back); **long-press
+the active mode pill** to enter *arrange mode* and drag tiles left/right to reorder them.
 
 Some Actions prompt for permission the first time (Screenshot → Screen Recording,
 Dark Mode → Automation); macOS will ask once.
@@ -94,7 +104,7 @@ Dark Mode → Automation); macOS will ask once.
 The public `NSTouchBar` API is focus-bound; to own the bar persistently PulseBar uses
 the same private SPI as Pock / MTMR / BetterTouchTool — all verified at runtime on the
 build machine before use:
-- `DFRFoundation` control-strip presence + `presentSystemModalTouchBar:` (focus-independent presentation)
+- `DFRFoundation` control-strip presence + `presentSystemModalTouchBar:placement:` (focus-independent; `placement:1` hides the Control Strip natively) + `DFRSystemModalShowsCloseBoxWhenFrontMost(NO)` (suppress the ✕)
 - `DisplayServices` brightness, `MediaRemote` now-playing/transport, CoreAudio volume
 
 > ⚠️ Private API → not App-Store-shippable; Touch Bar Macs only. Built & tested on a
@@ -125,13 +135,13 @@ Sources/
   Pomodoro.m                work/break timer model
   TouchBarPresenter.m       Touch Bar SPI: present/dismiss + reversible full-bar takeover
   MirrorController.m        desktop mirror panel (floating, clickable copy)
-  ModifierMonitor.m         debounced ⌘/⌥ hold detection
+  ModifierMonitor.m         debounced ⌃/⌥ hold detection (⌃ peek previous mode · ⌥ app overlay)
   AgentCoordinator.m        agent + chat window + push-to-talk + safe action dispatch
   Agent.m · AgentWindowController.m   intent resolver (fast-path → Gemma) · chat/voice window
   VoiceCommands.m           closed command vocabulary + offline intent parser
   AppIndex.m · Queries.m    fuzzy app launcher · read-only spoken status answers
   VoiceNotes.m              Focus side-notes: walkie-talkie capture → notes.jsonl / CSV
-  SettingsWindowController.m  desktop settings window
+  SettingsWindowController.m  sectioned settings window (General · Fit · Focus · Notes)
   LayoutEditorWindowController.m  size editor (per-tile size/priority/visibility)
   PBDefaults.m              NSUserDefaults key constants
   PreviewData.m             canned sample telemetry for previews/harnesses

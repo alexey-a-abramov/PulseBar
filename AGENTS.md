@@ -79,10 +79,14 @@ Sources/
   AppDelegate.m              the composition root: 1 Hz sampling, action
                              handlers, LaunchAgent, sleep/wake pause, settings.
                              Delegates the Touch Bar SPI to TouchBarPresenter,
-                             the mirror to MirrorController, ⌘/⌥ to
+                             the mirror to MirrorController, ⌃/⌥ to
                              ModifierMonitor, and the agent to AgentCoordinator.
+                             Also: safe-area "Fit" insets, compact toggle, and the
+                             unmutable session break reminder.
   BarView.m                  all rendering + hit-testing. Modes, accordion tabs,
-                             tiles, sliders, swipe, size-aware priority layout.
+                             tiles, sliders, swipe, size-aware priority layout,
+                             safe-area insets, compact (icon-only) layout, and
+                             drag-to-arrange (long-press the active pill).
                              (Drawn in a flipped view.)
   Stats.m                    cpu / per-core / mem(+swap) / net / battery / gpu /
                              disk io+space / top-process / uptime  (pure C, testable)
@@ -91,7 +95,8 @@ Sources/
   Pomodoro.m                 work/break timer model
   TouchBarPresenter.m        Touch Bar SPI: present/dismiss + reversible takeover
   MirrorController.m         desktop mirror panel (floating, clickable copy)
-  ModifierMonitor.m          debounced ⌘/⌥ hold detection (NSEvent + Accessibility)
+  ModifierMonitor.m          debounced ⌃/⌥ hold detection (NSEvent + Accessibility).
+                             ⌃ = momentary peek of the previous mode; ⌥ = app overlay.
   AgentCoordinator.m         PBAgent + chat window + push-to-talk + safe action dispatch
   Agent.m                    intent resolver: deterministic fast-path → Gemma fallback
   VoiceCommands.m            closed command vocabulary + offline intent parser
@@ -99,7 +104,8 @@ Sources/
   Queries.m                  read-only spoken status answers (battery/cpu/…)
   VoiceNotes.m               Focus side-notes: walkie-talkie capture → notes.jsonl + CSV export
   AgentWindowController.m    chat window: bubbles, quick chips, voice capture
-  SettingsWindowController.m desktop settings window (full-bar, login, top-proc, pomodoro)
+  SettingsWindowController.m sectioned settings window — tabs: General, Fit (safe-area
+                             squeeze + compact), Focus (pomodoro + break reminder), Notes (history)
   LayoutEditorWindowController.m  size editor: per-tile size/priority/visibility + preview
   PBDefaults.m               NSUserDefaults key constants (single source of truth)
   PreviewData.m              canned sample telemetry for the editor preview + harnesses
@@ -131,11 +137,23 @@ Public `NSTouchBar` is focus-bound. PulseBar uses the same private SPI as
 Pock/MTMR/BetterTouchTool, all resolved/guarded at runtime:
 - `DFRFoundation`: `DFRElementSetControlStripPresenceForIdentifier`,
   `DFRSystemModalShowsCloseBoxWhenFrontMost` (via `dlsym`).
-- `+[NSTouchBarItem addSystemTrayItem:]`, `+[NSTouchBar presentSystemModalTouchBar:systemTrayItemIdentifier:]`.
-- **Full width**: set `com.apple.touchbar.agent PresentationModeGlobal=app` and
-  restart `TouchBarServer`/`ControlStrip` (hides the Control Strip; also makes the
-  bar persist over apps with per-app function-key overrides). Reversible; backs up
-  and restores the previous value; restores on quit so you're never stuck.
+- `+[NSTouchBarItem addSystemTrayItem:]`, `+[NSTouchBar presentSystemModalTouchBar:placement:systemTrayItemIdentifier:]`.
+- **Hide the Control Strip (no flicker)**: present with `placement:1` (MTMR's trick) —
+  this hides the right-edge Control Strip (brightness/volume/Siri) *natively*, with
+  no `defaults` write or server restart. `-attach` uses it whenever `PBKeyFullBar`
+  is on; the plain `…:systemTrayItemIdentifier:` (no placement) keeps the strip.
+- **Hide the close box (✕)**: call `DFRSystemModalShowsCloseBoxWhenFrontMost(NO)` at
+  *setup, before the first present* (MTMR does this; calling it only after is
+  unreliable), and again after each present.
+- **Heavy fallback** (menu → "Re-take Over the Touch Bar", ⌘R): also writes
+  `com.apple.touchbar.agent PresentationModeGlobal=app` and restarts
+  `TouchBarServer`/`ControlStrip` (~1s flicker). Reversible; backs up/restores the
+  previous value on quit. There is **no** automatic re-attach on app switch (it
+  flickered); app switches just quietly re-suppress the ✕.
+- **Fit around residual chrome**: where the ✕ still shifts the bar or the strip
+  overlaps, `BarView.safeAreaLeftInset`/`safeAreaRightInset` reserve px so tiles &
+  the agent orb stay clear (Settings → Fit, keys `PBKeySafeLeft`/`PBKeySafeRight`;
+  defaults 0 / 110). The orb lives outside the packed set so it's always drawn.
 - Other SPI: `DisplayServices` (brightness), `MediaRemote` (media), CoreAudio (volume).
 
 > Private API → not App-Store-shippable; Touch Bar Macs only. Built & verified on a
@@ -145,7 +163,18 @@ Pock/MTMR/BetterTouchTool, all resolved/guarded at runtime:
 `BarView` has 5 modes (`BarMode`). Each mode is a list of **tiles** returned by
 `tilesForMode()`. A tile is a `TileType` + weight; `drawTile:` renders it and
 `fireTap:` handles taps. The active mode is an accordion pill on the left; swipe or
-tap to switch (synced to the mirror via `barDidChangeMode:`).
+tap to switch (synced to the mirror via `barDidChangeMode:`). The Classic tab uses
+the `apple.logo` symbol.
+
+**Compact layout** (`BarView.compactLayout`, `PBKeyCompact`, menu + Settings → Fit):
+the active pill drops its text label (icon-only, narrower) and `drawTile:`'s
+`action:` tiles render icon-only — denser, for tight bars. Rendering-only; the
+visible set / packing is unchanged.
+
+**Drag-to-arrange**: long-press the active pill → arrange mode (amber dashed frame
++ ⟷ pill); drag a tile left/right to reorder, tap the pill to finish. Persists via
+the `@"order"` override (same as the layout editor), keyed per-instance so the
+Actions launchers reorder individually (`orderKeyForType`/`effectiveOrderForDef`).
 
 **To add a tile:** add a `TileType`, a `drawTile:` case, a `fireTap:` case (if
 interactive), and include it in `tilesForMode()`. If it needs new data, add a
