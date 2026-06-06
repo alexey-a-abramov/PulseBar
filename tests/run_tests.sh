@@ -27,7 +27,7 @@ echo "------------------------------------------------------------"
 echo " UNIT TESTS — layout engine (priority hiding + overrides)"
 echo "------------------------------------------------------------"
 clang -fobjc-arc -O0 -isysroot "$SDK" \
-  "$TESTS/layout_test.m" "$SRC/BarView.m" "$SRC/PBDefaults.m" "$SRC/AppIndex.m" "$SRC/Log.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" \
+  "$TESTS/layout_test.m" "$SRC/BarView.m" "$SRC/PBDefaults.m" "$SRC/PBProcess.m" "$SRC/AppIndex.m" "$SRC/Log.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Pomodoro.m" \
   -framework AppKit -framework Foundation -framework CoreFoundation -framework IOKit \
   -framework QuartzCore -framework CoreGraphics -framework CoreAudio -framework ApplicationServices \
   -o "$BUILD/layout_test" || { echo "compile failed"; exit 1; }
@@ -51,7 +51,7 @@ clang -fobjc-arc -O0 -isysroot "$SDK" \
 "$BUILD/voicecommands_test"; VOICE=$?
 
 clang -fobjc-arc -O0 -isysroot "$SDK" \
-  "$TESTS/queries_test.m" "$SRC/Queries.m" "$SRC/Stats.m" "$SRC/Controls.m" \
+  "$TESTS/queries_test.m" "$SRC/Queries.m" "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/PBProcess.m" \
   -framework Foundation -framework CoreFoundation -framework IOKit \
   -framework CoreAudio -framework CoreGraphics -framework AppKit -framework ApplicationServices \
   -o "$BUILD/queries_test" || { echo "compile failed"; exit 1; }
@@ -63,7 +63,7 @@ echo " E2E — emulated voice commands through the agent (no UI)"
 echo "------------------------------------------------------------"
 clang -fobjc-arc -O0 -isysroot "$SDK" \
   "$TESTS/voice_e2e.m" "$SRC/Agent.m" "$SRC/VoiceCommands.m" "$SRC/AppIndex.m" "$SRC/Queries.m" \
-  "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/Log.m" \
+  "$SRC/Stats.m" "$SRC/Controls.m" "$SRC/PBProcess.m" "$SRC/Log.m" \
   -framework Foundation -framework CoreFoundation -framework IOKit -framework CoreAudio \
   -framework CoreGraphics -framework AppKit -framework ApplicationServices \
   -o "$BUILD/voice_e2e" || { echo "compile failed"; exit 1; }

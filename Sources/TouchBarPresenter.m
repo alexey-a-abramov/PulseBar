@@ -4,6 +4,7 @@
 #import "TouchBarPresenter.h"
 #import "PrivateAPI.h"
 #import "PBDefaults.h"
+#import "PBProcess.h"
 #import "Log.h"
 #import <dlfcn.h>
 
@@ -137,18 +138,9 @@ static NSTouchBarItemIdentifier const kStripID   = @"com.fun.pulsebar.strip";
 
 #pragma mark - full-bar takeover (reversible)
 
-static NSString *pbRun(NSString *path, NSArray<NSString *> *args) {
-    NSTask *t = [NSTask new]; t.launchPath = path; t.arguments = args;
-    NSPipe *out = [NSPipe pipe]; t.standardOutput = out; t.standardError = [NSPipe pipe];
-    @try { [t launch]; } @catch (id e) { return nil; }
-    NSData *d = [out.fileHandleForReading readDataToEndOfFile];
-    [t waitUntilExit];
-    return [[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]
-            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-}
-- (NSString *)readTBMode { return pbRun(@"/usr/bin/defaults", @[@"read", @"com.apple.touchbar.agent", @"PresentationModeGlobal"]); }
-- (void)writeTBMode:(NSString *)m { pbRun(@"/usr/bin/defaults", @[@"write", @"com.apple.touchbar.agent", @"PresentationModeGlobal", @"-string", m]); }
-- (void)restartTB { pbRun(@"/usr/bin/killall", @[@"TouchBarServer"]); pbRun(@"/usr/bin/killall", @[@"ControlStrip"]); }
+- (NSString *)readTBMode { return PBRunCapture(@"/usr/bin/defaults", @[@"read", @"com.apple.touchbar.agent", @"PresentationModeGlobal"]); }
+- (void)writeTBMode:(NSString *)m { PBRunCapture(@"/usr/bin/defaults", @[@"write", @"com.apple.touchbar.agent", @"PresentationModeGlobal", @"-string", m]); }
+- (void)restartTB { PBRunCapture(@"/usr/bin/killall", @[@"TouchBarServer"]); PBRunCapture(@"/usr/bin/killall", @[@"ControlStrip"]); }
 
 - (void)applyFullBar:(BOOL)on {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;

@@ -15,6 +15,7 @@
 #import "LayoutEditorWindowController.h"
 #import "CrashReporter.h"
 #import "ModifierMonitor.h"
+#import "PBProcess.h"
 #import "AppIndex.h"
 #import "AgentCoordinator.h"
 #import "VoiceNotes.h"
@@ -448,10 +449,7 @@ static NSString *PBHumanDuration(double sec) {
 }
 
 // fire-and-forget (don't block the main thread, unlike -run:args:)
-- (void)launch:(NSString *)path args:(NSArray<NSString *> *)args {
-    NSTask *t = [NSTask new]; t.launchPath = path; t.arguments = args;
-    @try { [t launch]; } @catch (id e) {}
-}
+- (void)launch:(NSString *)path args:(NSArray<NSString *> *)args { PBLaunchDetached(path, args); }
 
 - (void)pomodoroFinished:(BOOL)wasWork {
     NSSound *s = [NSSound soundNamed:wasWork ? @"Glass" : @"Funk"];
@@ -641,13 +639,7 @@ static NSString *PBHumanDuration(double sec) {
 
 // Run a process and capture trimmed stdout (used by the login-item helpers).
 - (NSString *)run:(NSString *)path args:(NSArray<NSString *> *)args {
-    NSTask *t = [NSTask new]; t.launchPath = path; t.arguments = args;
-    NSPipe *out = [NSPipe pipe]; t.standardOutput = out; t.standardError = [NSPipe pipe];
-    @try { [t launch]; } @catch (id e) { return nil; }
-    NSData *d = [out.fileHandleForReading readDataToEndOfFile];
-    [t waitUntilExit];
-    return [[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]
-            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    return PBRunCapture(path, args);
 }
 
 #pragma mark - login item (LaunchAgent)

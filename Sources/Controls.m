@@ -2,6 +2,7 @@
 //  Controls.m
 //
 #import "Controls.h"
+#import "PBProcess.h"
 #import <CoreAudio/CoreAudio.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <dlfcn.h>
@@ -125,15 +126,7 @@ void CtlSetMediaApp(NSString *app) { if (app.length) g_mediaApp = [app copy]; }
 NSString *CtlMediaApp(void) { return g_mediaApp; }
 
 // Run osascript and return trimmed stdout. BLOCKING — only call on g_mq.
-static NSString *osa(NSString *src) {
-    NSTask *t = [NSTask new]; t.launchPath = @"/usr/bin/osascript"; t.arguments = @[@"-e", src];
-    NSPipe *o = [NSPipe pipe]; t.standardOutput = o; t.standardError = [NSPipe pipe];
-    @try { [t launch]; } @catch (id e) { return nil; }
-    NSData *d = [[o fileHandleForReading] readDataToEndOfFile];
-    [t waitUntilExit];
-    return [[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]
-            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-}
+static NSString *osa(NSString *src) { return PBRunCapture(@"/usr/bin/osascript", @[@"-e", src]); }
 
 static NowPlaying queryApp(NSString *app) {
     NowPlaying np; memset(&np, 0, sizeof(np));
