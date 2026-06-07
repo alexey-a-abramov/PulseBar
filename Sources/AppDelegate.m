@@ -216,10 +216,17 @@
 
     // Touch Bar
     [menu addItem:[NSMenuItem separatorItem]];
-    [menu addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror)     keyEquivalent:@"m"];
-    [menu addItemWithTitle:@"Re-take Over the Touch Bar" action:@selector(reattachFully)    keyEquivalent:@"r"];
     _compactItem = [menu addItemWithTitle:@"Compact Layout (icon-only)" action:@selector(toggleCompact) keyEquivalent:@""];
-    [menu addItemWithTitle:@"Open Log"                   action:@selector(openLog)          keyEquivalent:@"l"];
+
+    // Diagnostics submenu (mirror · re-take · log)
+    NSMenuItem *diag = [[NSMenuItem alloc] initWithTitle:@"Diagnostics" action:nil keyEquivalent:@""];
+    NSMenu *diagSub = [[NSMenu alloc] init];
+    [diagSub addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror)     keyEquivalent:@"m"];
+    [diagSub addItemWithTitle:@"Re-take Over the Touch Bar" action:@selector(reattachFully)    keyEquivalent:@"r"];
+    [diagSub addItemWithTitle:@"Open Log"                   action:@selector(openLog)          keyEquivalent:@"l"];
+    for (NSMenuItem *it in diagSub.itemArray) it.target = self;
+    diag.submenu = diagSub;
+    [menu addItem:diag];
 
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Quit PulseBar"              action:@selector(quit)             keyEquivalent:@"q"];
