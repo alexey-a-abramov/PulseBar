@@ -16,12 +16,14 @@ NSString * const PBKeyBreakReminder = @"breakReminderMinutes";
 NSString * const PBKeySafeLeft    = @"safeAreaLeft";
 NSString * const PBKeySafeRight   = @"safeAreaRight";
 NSString * const PBKeyCompact     = @"compactLayout";
+NSString * const PBKeyAgentSessionTimeout = @"agentSessionTimeoutMin";
 
 const NSInteger PBDefaultWorkMinutes          = 25;
 const NSInteger PBDefaultBreakMinutes         = 5;
 const NSInteger PBDefaultBreakReminderMinutes = 80;
 const NSInteger PBDefaultSafeLeft             = 0;
 const NSInteger PBDefaultSafeRight            = 110;
+const NSInteger PBDefaultAgentSessionTimeoutMin = 5;
 
 NSInteger PBDefaultsInteger(NSString *key, NSInteger fallback) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;

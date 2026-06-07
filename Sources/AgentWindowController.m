@@ -32,6 +32,7 @@
 @interface BubbleView : NSView
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *msgs;   // role,text,color,align
 - (void)addRole:(NSString *)role text:(NSString *)text color:(NSColor *)color align:(NSTextAlignment)align;
+- (void)removeAll;
 - (CGFloat)layoutInto:(NSMutableArray *)rects width:(CGFloat)W;       // returns total height
 @end
 
@@ -56,6 +57,12 @@
         y += bh + 8;
     }
     return y + 4;
+}
+
+- (void)removeAll {
+    [_msgs removeAllObjects];
+    NSRect f = self.frame; f.size.height = NSHeight(self.superview.bounds); self.frame = f;
+    [self setNeedsDisplay:YES];
 }
 
 - (void)addRole:(NSString *)role text:(NSString *)text color:(NSColor *)color align:(NSTextAlignment)align {
@@ -94,8 +101,10 @@
 @end
 
 // --------------------------------------------------------------------------
-@interface AgentWindowController () <NSTextFieldDelegate>
+@interface AgentWindowController () <NSTextFieldDelegate, NSWindowDelegate>
 @end
+
+static NSString *kAgentGreeting = @"Hey! Tell me what to do — “mute”, “brightness 80”, “play music” — or ask a question. Tap 🎙 to talk.";
 
 @implementation AgentWindowController {
     PBAgent     *_agent;
@@ -123,7 +132,7 @@
     w.level = NSFloatingWindowLevel;
     w.minSize = NSMakeSize(360, 320);
     w.backgroundColor = [NSColor colorWithCalibratedWhite:0.11 alpha:1.0];
-    if ((self = [super initWithWindow:w])) { _agent = agent; [self build]; }
+    if ((self = [super initWithWindow:w])) { _agent = agent; w.delegate = self; [self build]; }
     return self;
 }
 
@@ -173,7 +182,7 @@
     _send = [self iconButton:@"paperplane.fill" action:@selector(send:) frame:NSMakeRect(W - 38, 11, 30, 30)];
     _send.keyEquivalent = @"\r"; [c addSubview:_send];
 
-    [_bubbles addRole:@"PULSEBAR" text:@"Hey! Tell me what to do — “mute”, “brightness 80”, “play music” — or ask a question. Tap 🎙 to talk." color:[NSColor systemPurpleColor] align:NSTextAlignmentLeft];
+    [_bubbles addRole:@"PULSEBAR" text:kAgentGreeting color:[NSColor systemPurpleColor] align:NSTextAlignmentLeft];
 }
 
 - (NSButton *)iconButton:(NSString *)symbol action:(SEL)action frame:(NSRect)f {
@@ -187,8 +196,18 @@
 - (void)present {
     [self refreshStatus];
     [NSApp activateIgnoringOtherApps:YES];
-    [self.window center];
+    if (!self.window.isVisible) [self.window center];   // don't yank a window the user moved / re-presented
     [self showWindow:nil]; [self.window makeKeyAndOrderFront:nil]; [self.window makeFirstResponder:_input];
+}
+
+- (void)clearTranscript {
+    [_bubbles removeAll];
+    [_bubbles addRole:@"PULSEBAR" text:kAgentGreeting color:[NSColor systemPurpleColor] align:NSTextAlignmentLeft];
+}
+
+- (void)windowWillClose:(NSNotification *)n {
+    if (_listening) [self stopListening];
+    if (self.onWindowClosed) self.onWindowClosed();
 }
 
 - (BOOL)listening { return _listening; }
@@ -219,6 +238,7 @@
         [self->_bubbles addRole:@"PULSEBAR" text:reply ?: @"(no reply)" color:[NSColor systemPurpleColor] align:NSTextAlignmentLeft];
         self->_busy = NO; self->_send.enabled = YES;
         [self refreshStatus];
+        if (self->_onTurnComplete) self->_onTurnComplete(interp.length > 0);   // actionRan → coordinator may auto-close
     }];
 }
 

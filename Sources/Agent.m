@@ -29,6 +29,8 @@ static NSString *systemPrompt(void) {
     return self;
 }
 
+- (void)resetSession { [_history removeAllObjects]; }
+
 + (void)status:(NSString *)model done:(void (^)(BOOL, BOOL))done {
     NSURL *u = [NSURL URLWithString:[kOllama stringByAppendingString:@"/api/tags"]];
     NSURLRequest *r = [NSURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:3];

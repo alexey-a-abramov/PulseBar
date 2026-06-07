@@ -18,6 +18,10 @@
 // `reply` is the text to show the user. Always called on the main thread.
 - (void)ask:(NSString *)text done:(void (^)(NSString *interpretation, NSString *reply))done;
 
+// Forget the conversation history (start a fresh dialogue). The system prompt is
+// rebuilt per call, so the next ask: begins clean.
+- (void)resetSession;
+
 // Check Ollama is up and the model is pulled.
 + (void)status:(NSString *)model done:(void (^)(BOOL serverUp, BOOL modelReady))done;
 @end

@@ -18,6 +18,7 @@ extern NSString * const PBKeyBreakReminder;// NSInteger — minutes of unbroken 
 extern NSString * const PBKeySafeLeft;     // NSInteger — px reserved on the live bar's left for the close box (default 0)
 extern NSString * const PBKeySafeRight;    // NSInteger — px reserved on the live bar's right for the Control Strip (default 110)
 extern NSString * const PBKeyCompact;      // BOOL  — compact layout: icon-only active mode pill + icon-only action tiles
+extern NSString * const PBKeyAgentSessionTimeout; // NSInteger minutes — start a fresh agent dialogue after this much inactivity (0 = never)
 
 // Default values — kept here so they aren't re-typed as literals across the app.
 extern const NSInteger PBDefaultWorkMinutes;          // 25
@@ -25,6 +26,7 @@ extern const NSInteger PBDefaultBreakMinutes;         // 5
 extern const NSInteger PBDefaultBreakReminderMinutes; // 80
 extern const NSInteger PBDefaultSafeLeft;             // 0
 extern const NSInteger PBDefaultSafeRight;            // 110
+extern const NSInteger PBDefaultAgentSessionTimeoutMin; // 5 (0 = never reset the dialogue)
 
 // Read a defaults value, returning `fallback` when the key has never been set.
 NSInteger PBDefaultsInteger(NSString *key, NSInteger fallback);
