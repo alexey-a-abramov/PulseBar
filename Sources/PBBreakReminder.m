@@ -5,8 +5,7 @@
 #import "PBDefaults.h"
 #import "Log.h"
 
-static const double kRepeatSeconds = 15 * 60.0;   // re-nudge cadence once past the threshold
-static const double kBannerSeconds = 12.0;         // how long the banner stays up
+static const double kRepeatSeconds = 15 * 60.0;   // re-nudge cadence after you acknowledge
 
 // Compact "1h 26m" / "44m" duration for the break banner.
 static NSString *PBHumanDuration(double sec) {
@@ -16,30 +15,41 @@ static NSString *PBHumanDuration(double sec) {
 
 @implementation PBBreakReminder {
     double _nextBreakAt;   // session-seconds at which the next banner fires
+    double _lastSession;   // most recent session length (for re-arming on acknowledge)
+    BOOL   _showing;       // banner is up and waiting for an explicit OK
 }
 
 - (void)rearm { _nextBreakAt = 0; }
 
 - (void)update:(double)session {
     if (getenv("PULSEBAR_SELFQUIT")) return;
+    _lastSession = session;
     NSInteger thrMin = PBDefaultsInteger(PBKeyBreakReminder, PBDefaultBreakReminderMinutes);
     double thr = (thrMin > 0 ? thrMin : PBDefaultBreakReminderMinutes) * 60.0;
-    if (session < thr) { _nextBreakAt = thr; return; }      // below threshold → arm for the first crossing
-    if (_nextBreakAt < thr) _nextBreakAt = thr;
-    if (session + 0.5 >= _nextBreakAt) {
-        _nextBreakAt = session + kRepeatSeconds;
-        [self fire:session];
+    if (session < thr) {                         // session reset (you took a break) → clear the banner
+        _nextBreakAt = thr;
+        if (_showing) { _showing = NO; if (self.onHide) self.onHide(); }
+        return;
     }
+    if (_showing) return;                        // permanent until acknowledged — never auto-hide / re-fire
+    if (_nextBreakAt < thr) _nextBreakAt = thr;
+    if (session + 0.5 >= _nextBreakAt) [self fire:session];
 }
 
 - (void)fire:(double)session {
+    _showing = YES;
     NSString *txt = PBHumanDuration(session);
     if (self.onShow) self.onShow(txt);
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hide) object:nil];
-    [self performSelector:@selector(hide) withObject:nil afterDelay:kBannerSeconds];
-    PBLog(@"break reminder shown (session %@)", txt);
+    PBLog(@"break reminder shown (session %@) — waiting for OK", txt);
 }
 
-- (void)hide { if (self.onHide) self.onHide(); }
+// User pressed OK. Dismiss and don't nudge again for ~15 min.
+- (void)acknowledge {
+    if (!_showing) return;
+    _showing = NO;
+    if (self.onHide) self.onHide();
+    _nextBreakAt = _lastSession + kRepeatSeconds;
+    PBLog(@"break reminder acknowledged; next nudge in %ld min", (long)(kRepeatSeconds / 60));
+}
 
 @end

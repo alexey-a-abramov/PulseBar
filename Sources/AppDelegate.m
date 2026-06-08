@@ -383,6 +383,7 @@
     [self.voiceNotes start];
 }
 - (void)barNoteUp { [self.voiceNotes stopAndSave]; }
+- (void)barAcknowledgeBreak { [self.breakReminder acknowledge]; }
 - (void)barOpenSettings         { [self showSettings]; }
 - (PBAgentCoordinator *)agentCoord {
     if (!_agentCoord) _agentCoord = [[PBAgentCoordinator alloc] initWithHost:self];

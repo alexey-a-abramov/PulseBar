@@ -133,6 +133,7 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     NSPoint     _pressPoint;     // where the active-pill press began (to cancel long-press on drift)
     NSInteger   _dragType;       // TileType being dragged in arrange mode (-1 = none)
     int         _dragArg;        // which instance (launcher index) is being dragged
+    NSRect      _breakOKRect;    // OK button on the take-a-break banner (hit-tested while it shows)
 }
 
 - (BOOL)isFlipped { return YES; }
@@ -633,7 +634,6 @@ static int viewCount(TileType t) {
     CGFloat W = b.size.width, H = b.size.height;
     CGFloat li = MAX(0, self.safeAreaLeftInset), ri = MAX(0, self.safeAreaRightInset);
     NSColor *amber  = [NSColor colorWithSRGBRed:1.00 green:0.62 blue:0.20 alpha:1];
-    NSColor *cocoa  = [NSColor colorWithSRGBRed:0.45 green:0.28 blue:0.10 alpha:1];
     NSGradient *bg = [[NSGradient alloc] initWithColors:@[
         [NSColor colorWithSRGBRed:0.20 green:0.12 blue:0.03 alpha:1],
         [NSColor colorWithSRGBRed:0.32 green:0.20 blue:0.05 alpha:1]]];
@@ -643,12 +643,18 @@ static int viewCount(TileType t) {
 
     [self symbol:@"cup.and.saucer.fill" in:NSMakeRect(li + 14, (H - 22) / 2, 26, 22) pt:16 color:amber];
 
+    // OK button (right) — the banner stays until you press it.
+    CGFloat okW = 58, okH = 20;
+    _breakOKRect = NSMakeRect(W - ri - 12 - okW, (H - okH) / 2, okW, okH);
+    [amber setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:_breakOKRect xRadius:6 yRadius:6] fill];
+    [self tc:@"OK" cx:NSMidX(_breakOKRect) y:NSMidY(_breakOKRect) - 6.5 sz:11 w:NSFontWeightHeavy c:[NSColor colorWithCalibratedWhite:0.12 alpha:1]];
+
     NSString *dur = self.breakReminderText.length ? self.breakReminderText : @"a while";
     [self t:@"Time for a break" at:NSMakePoint(li + 50, H / 2 - 10) sz:13 w:NSFontWeightHeavy c:[NSColor whiteColor]];
-    [self t:[NSString stringWithFormat:@"Focused for %@ — stand up, stretch, look away from the screen", dur]
-           at:NSMakePoint(li + 50, H / 2 + 5) sz:8.5 w:NSFontWeightMedium c:[NSColor colorWithCalibratedWhite:0.85 alpha:1]];
-
-    [self t:@"↻ reminds again in 15 min" rx:W - ri - 14 y:H / 2 - 5 sz:8 w:NSFontWeightSemibold c:[cocoa blendedColorWithFraction:0.5 ofColor:amber]];
+    [self clip:[NSString stringWithFormat:@"Focused for %@ — stand up, stretch, then press OK", dur]
+            at:NSMakePoint(li + 50, H / 2 + 5) sz:8.5 w:NSFontWeightMedium c:[NSColor colorWithCalibratedWhite:0.85 alpha:1]
+          maxW:_breakOKRect.origin.x - (li + 50) - 12];
 }
 
 // Arrange mode cues: a dashed amber frame around the reorderable content and a
@@ -733,6 +739,10 @@ static int viewCount(TileType t) {
 - (void)beginAt:(NSPoint)p {
     _downX = p.x; _activeSlider = -1; _sliding = NO; _swiped = NO; _agentPressing = NO; _notePressing = NO;
     _pendingPillTap = NO; _dragType = -1;
+    if (self.breakReminder) {   // banner is modal-ish: only the OK button dismisses it
+        if (NSPointInRect(p, _breakOKRect)) [self.actionDelegate barAcknowledgeBreak];
+        return;
+    }
     Tile *t = [self tileAt:p];
     if (pbDebug()) NSLog(@"[PB] beginAt (%.0f,%.0f) tile=%ld", p.x, p.y, t ? (long)t->type : -1);
     if (!t) return;

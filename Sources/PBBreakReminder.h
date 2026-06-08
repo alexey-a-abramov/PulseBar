@@ -8,8 +8,9 @@
 
 @interface PBBreakReminder : NSObject
 @property (nonatomic, copy) void (^onShow)(NSString *durationText);  // show the banner
-@property (nonatomic, copy) void (^onHide)(void);                    // clear the banner (auto, after ~12s)
+@property (nonatomic, copy) void (^onHide)(void);                    // clear the banner
 
 - (void)update:(double)sessionSeconds;   // call ~1 Hz
 - (void)rearm;                            // re-evaluate against a changed threshold on the next update
+- (void)acknowledge;                      // user pressed OK — dismiss; next nudge ~15 min later
 @end

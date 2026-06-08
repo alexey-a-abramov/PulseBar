@@ -38,6 +38,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barAgentUp:(BOOL)wasHold; // released (wasHold = walkie-talkie)
 - (void)barNoteDown;              // Focus side-note tile pressed — start recording
 - (void)barNoteUp;                // released — stop + save the side note
+- (void)barAcknowledgeBreak;      // OK pressed on the take-a-break banner
 - (void)barDidChangeMode:(NSInteger)mode;
 - (void)barSendFunctionKey:(NSInteger)n;   // n = 1..12 (legacy)
 - (void)barAppAction:(NSString *)action;   // "hide" | "quit" the frontmost app
