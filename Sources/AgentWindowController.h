@@ -15,4 +15,7 @@
 - (void)presentAndListen;   // open + start voice capture (push-to-talk)
 - (void)stopAndSend;        // stop capture and send the transcript
 - (void)clearTranscript;    // drop the conversation bubbles, keep the greeting (new session)
+// Show a complete turn (used when a walkie-talkie result is too long for the HUD):
+// present the window and append the you/action/reply bubbles without re-asking.
+- (void)showTurnUser:(NSString *)user action:(NSString *)interp reply:(NSString *)reply;
 @end

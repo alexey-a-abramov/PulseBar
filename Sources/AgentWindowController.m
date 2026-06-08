@@ -205,6 +205,13 @@ static NSString *kAgentGreeting = @"Hey! Tell me what to do — “mute”, “b
     [_bubbles addRole:@"PULSEBAR" text:kAgentGreeting color:[NSColor systemPurpleColor] align:NSTextAlignmentLeft];
 }
 
+- (void)showTurnUser:(NSString *)user action:(NSString *)interp reply:(NSString *)reply {
+    [self present];
+    if (user.length)  [_bubbles addRole:@"YOU" text:user color:[NSColor systemBlueColor] align:NSTextAlignmentRight];
+    if (interp.length)[_bubbles addRole:@"ACTION" text:interp color:[NSColor systemTealColor] align:NSTextAlignmentCenter];
+    [_bubbles addRole:@"PULSEBAR" text:reply ?: @"(no reply)" color:[NSColor systemPurpleColor] align:NSTextAlignmentLeft];
+}
+
 - (void)windowWillClose:(NSNotification *)n {
     if (_listening) [self stopListening];
     if (self.onWindowClosed) self.onWindowClosed();

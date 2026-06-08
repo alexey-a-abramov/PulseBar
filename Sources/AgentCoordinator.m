@@ -4,13 +4,17 @@
 #import "AgentCoordinator.h"
 #import "Agent.h"
 #import "AgentWindowController.h"
+#import "PBAgentHUD.h"
+#import "PBSpeechCapture.h"
 #import "Controls.h"
 #import "AppIndex.h"
 #import "Queries.h"
 #import "PBDefaults.h"
 #import "Log.h"
 
-static const NSTimeInterval kAutoCloseDelay = 0.8;   // let the user glimpse the result before closing
+// A result this short (and single-line) fades in the HUD; anything longer or
+// multi-line opens the chat window instead (the user reads it there).
+static const NSUInteger kHUDResultMaxChars = 44;
 
 @interface PBAgentCoordinator () <PBAgentRunner>
 @end
@@ -18,11 +22,12 @@ static const NSTimeInterval kAutoCloseDelay = 0.8;   // let the user glimpse the
 @implementation PBAgentCoordinator {
     __weak id<PBAgentHost> _host;
     PBAgent               *_agent;
-    AgentWindowController *_window;
-    BOOL                   _startedThisPress;   // this press began a listening session
-    BOOL                   _openedByThisPress;  // this press made a hidden window visible
-    BOOL                   _ephemeralTurn;      // a press-opened turn that may auto-close on success
-    NSDate                *_lastActivityAt;     // for the inactivity session reset
+    AgentWindowController *_window;     // interactive chat + long results
+    PBAgentHUD            *_hud;        // walkie-talkie recording + short results
+    PBSpeechCapture       *_capture;    // push-to-talk voice
+    BOOL                   _capturing;
+    NSString              *_pendingUser;
+    NSDate                *_lastActivityAt;
 }
 
 - (instancetype)initWithHost:(id<PBAgentHost>)host {
@@ -30,16 +35,19 @@ static const NSTimeInterval kAutoCloseDelay = 0.8;   // let the user glimpse the
     return self;
 }
 
-- (AgentWindowController *)ensureWindow {
-    if (!_agent)  {
+- (PBAgent *)ensureAgent {
+    if (!_agent) {
         _agent = [PBAgent new]; _agent.runner = self;
         _agent.appResolver = ^NSString *(NSString *q) { return [[PBAppIndex shared] bestMatchFor:q].name; };
     }
+    return _agent;
+}
+- (AgentWindowController *)ensureWindow {
+    [self ensureAgent];
     if (!_window) {
         _window = [[AgentWindowController alloc] initWithAgent:_agent];
         __weak typeof(self) ws = self;
-        _window.onTurnComplete = ^(BOOL actionRan) { [ws handleTurnComplete:actionRan]; };
-        _window.onWindowClosed = ^{ typeof(self) s = ws; if (s) s->_ephemeralTurn = NO; };   // user closed → not ephemeral
+        _window.onTurnComplete = ^(BOOL actionRan) { (void)actionRan; typeof(self) s = ws; if (s) s->_lastActivityAt = [NSDate date]; };
     }
     return _window;
 }
@@ -55,48 +63,56 @@ static const NSTimeInterval kAutoCloseDelay = 0.8;   // let the user glimpse the
     }
 }
 
+// Menu "Ask the Agent…" — interactive chat window; never a HUD, never auto-close.
 - (void)openAgent {
     AgentWindowController *w = [self ensureWindow];
     [self maybeResetSession];
-    _ephemeralTurn = NO; _openedByThisPress = NO;   // interactive: never auto-close
     [w present];
     _lastActivityAt = [NSDate date];
 }
 
-// Orb press → push-to-talk. Tap toggles; hold = walkie-talkie (release sends).
-// A press that OPENS a hidden window is "ephemeral" — it auto-closes once a real
-// command runs. Opening interactively (menu) or onto an already-open window is not.
+// Orb = pure walkie-talkie: press records into the HUD, release stops + executes.
 - (void)agentDown {
-    AgentWindowController *w = [self ensureWindow];
-    [self maybeResetSession];
-    BOOL wasVisible = w.window.isVisible;
-    if (w.listening) {                              // already recording → stop & send
-        _startedThisPress = NO;
-        [w stopAndSend];
-    } else {                                        // idle → open + record
-        _startedThisPress = YES;
-        _openedByThisPress = !wasVisible;
-        _ephemeralTurn = _openedByThisPress;
-        [w presentAndListen];
+    [self ensureAgent]; [self maybeResetSession];
+    if (!_hud) _hud = [PBAgentHUD new];
+    if (!_capture) {
+        _capture = [PBSpeechCapture new];
+        __weak typeof(self) ws = self;
+        _capture.onPartial = ^(NSString *t) { typeof(self) s = ws; if (s) [s->_hud updatePartial:t]; };
+        _capture.onError   = ^(NSString *m) { typeof(self) s = ws; if (!s) return; s->_capturing = NO; [s->_hud showResult:m]; };
     }
+    _capturing = YES;
+    [_hud showListening];
+    [_capture start];
     _lastActivityAt = [NSDate date];
 }
 - (void)agentUp:(BOOL)wasHold {
-    if (_startedThisPress && wasHold && _window.listening) [_window stopAndSend];  // walkie-talkie release
-    _startedThisPress = NO;
+    (void)wasHold;
+    if (!_capturing) return;
+    _capturing = NO;
+    __weak typeof(self) ws = self;
+    [_capture stop:^(NSString *final) {
+        typeof(self) s = ws; if (!s) return;
+        if (!final.length) { [s->_hud dismiss]; return; }   // nothing heard
+        s->_pendingUser = final;
+        [s->_hud showThinking];
+        [s->_agent ask:final done:^(NSString *interp, NSString *reply) { [s routeResult:interp reply:reply]; }];
+    }];
+    _lastActivityAt = [NSDate date];
 }
 
-// A turn finished. Stamp activity; if this was a press-opened turn AND a real
-// command ran, close the window after a beat so the user sees the confirmation.
-- (void)handleTurnComplete:(BOOL)actionRan {
+// Short single-line result → fade in the HUD; long/complex → open the chat window.
+- (void)routeResult:(NSString *)interp reply:(NSString *)reply {
     _lastActivityAt = [NSDate date];
-    if (!(_ephemeralTurn && actionRan)) return;
-    __weak typeof(self) ws = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kAutoCloseDelay * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        typeof(self) s = ws; if (!s) return;
-        if (s->_ephemeralTurn && !s->_window.listening) { s->_ephemeralTurn = NO; [s->_window.window orderOut:nil]; }
-    });
+    NSString *r = reply ?: @"";
+    BOOL complex = (r.length > kHUDResultMaxChars) || ([r rangeOfString:@"\n"].location != NSNotFound);
+    if (complex) {
+        [_hud dismiss];
+        [[self ensureWindow] showTurnUser:_pendingUser action:interp reply:r];
+    } else {
+        [_hud showResult:r.length ? r : @"Done."];
+    }
+    _pendingUser = nil;
 }
 
 // PBAgentRunner — turn the model's chosen action into a real Mac action.
