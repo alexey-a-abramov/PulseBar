@@ -38,10 +38,13 @@ static const NSUInteger kHUDResultMaxChars = 44;
 - (PBAgent *)ensureAgent {
     if (!_agent) {
         _agent = [PBAgent new]; _agent.runner = self;
+        _agent.model = PBDefaultsString(PBKeyAgentModel, @"gemma3:4b");
         _agent.appResolver = ^NSString *(NSString *q) { return [[PBAppIndex shared] bestMatchFor:q].name; };
     }
     return _agent;
 }
+
+- (void)setActiveModel:(NSString *)tag { if (tag.length) [self ensureAgent].model = tag; }
 - (AgentWindowController *)ensureWindow {
     [self ensureAgent];
     if (!_window) {

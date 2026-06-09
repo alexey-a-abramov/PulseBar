@@ -6,6 +6,7 @@
 #import "SettingsWindowController.h"
 #import "VoiceNotes.h"
 #import "PBDefaults.h"
+#import "PBOllama.h"
 #import "Log.h"
 
 @interface SettingsWindowController () <NSTextFieldDelegate>
@@ -21,6 +22,12 @@
     NSSlider   *_leftSlider, *_rightSlider;
     NSTextField *_leftVal, *_rightVal;
     NSButton   *_compactCheck;
+    NSPopUpButton *_modelPopup, *_downloadPopup;
+    NSTextField *_modelStatus, *_dlStatus;
+    NSButton   *_downloadBtn;
+    NSProgressIndicator *_dlProgress;
+    NSStepper  *_agentTimeoutStep; NSTextField *_agentTimeoutVal;
+    PBOllama   *_pull;
 }
 
 static const CGFloat kW = 470, kH = 452;
@@ -70,6 +77,7 @@ static NSTextField *help(NSString *s, NSRect f) {
     [_tabs addTabViewItem:[self generalTab]];
     [_tabs addTabViewItem:[self fitTab]];
     [_tabs addTabViewItem:[self focusTab]];
+    [_tabs addTabViewItem:[self agentTab]];
     [_tabs addTabViewItem:[self notesTab]];
 
     NSButton *layout = [NSButton buttonWithTitle:@"Customize layout…" target:self action:@selector(editLayout:)];
@@ -202,6 +210,89 @@ static NSTextField *help(NSString *s, NSRect f) {
     return it;
 }
 
+- (NSTabViewItem *)agentTab {
+    NSTabViewItem *it = [[NSTabViewItem alloc] initWithIdentifier:@"agent"];
+    it.label = @"Agent";
+    NSView *c = [self pageView]; it.view = c;
+    CGFloat top = c.frame.size.height, W = c.frame.size.width;
+
+    [self section:@"Model" in:c at:top - 22];
+    [c addSubview:label(@"Active model", NSMakeRect(20, top - 50, 90, 18), 11, NO)];
+    _modelPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(112, top - 53, 220, 26)];
+    _modelPopup.target = self; _modelPopup.action = @selector(modelChanged:); [c addSubview:_modelPopup];
+    _modelStatus = label(@"checking Ollama…", NSMakeRect(20, top - 78, W - 40, 16), 10, NO);
+    _modelStatus.textColor = [NSColor secondaryLabelColor]; [c addSubview:_modelStatus];
+
+    [self section:@"Download a model" in:c at:top - 110];
+    _downloadPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(20, top - 141, 210, 26)];
+    for (NSDictionary *m in [PBOllama curatedModels]) {
+        NSString *noteStr = [m[@"note"] length] ? [@"  ·  " stringByAppendingString:m[@"note"]] : @"";
+        [_downloadPopup addItemWithTitle:[NSString stringWithFormat:@"%@  ·  %@%@", m[@"name"], m[@"size"], noteStr]];
+        _downloadPopup.lastItem.representedObject = m[@"tag"];
+    }
+    [c addSubview:_downloadPopup];
+    _downloadBtn = [NSButton buttonWithTitle:@"Download" target:self action:@selector(downloadModel:)];
+    _downloadBtn.frame = NSMakeRect(238, top - 142, 100, 28); _downloadBtn.bezelStyle = NSBezelStyleRounded; [c addSubview:_downloadBtn];
+    _dlProgress = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(20, top - 166, W - 40, 12)];
+    _dlProgress.style = NSProgressIndicatorStyleBar; _dlProgress.indeterminate = NO;
+    _dlProgress.minValue = 0; _dlProgress.maxValue = 1; _dlProgress.hidden = YES; [c addSubview:_dlProgress];
+    _dlStatus = label(@"", NSMakeRect(20, top - 184, W - 40, 16), 10, NO);
+    _dlStatus.textColor = [NSColor secondaryLabelColor]; [c addSubview:_dlStatus];
+    [c addSubview:help(@"Models run locally via Ollama — on-device & private. Downloads are several GB.",
+                       NSMakeRect(20, top - 202, W - 40, 16))];
+
+    [self section:@"Session" in:c at:top - 232];
+    [c addSubview:label(@"New dialogue after", NSMakeRect(20, top - 260, 120, 18), 11, NO)];
+    _agentTimeoutStep = [[NSStepper alloc] initWithFrame:NSMakeRect(145, top - 262, 20, 24)];
+    _agentTimeoutStep.minValue = 0; _agentTimeoutStep.maxValue = 120; _agentTimeoutStep.increment = 1;
+    _agentTimeoutStep.target = self; _agentTimeoutStep.action = @selector(changeAgentTimeout:); [c addSubview:_agentTimeoutStep];
+    _agentTimeoutVal = label(@"5 min idle", NSMakeRect(170, top - 260, 150, 18), 11, NO); [c addSubview:_agentTimeoutVal];
+    [c addSubview:help(@"Forget the conversation after this much inactivity (0 = never).",
+                       NSMakeRect(20, top - 282, W - 40, 16))];
+    return it;
+}
+
+- (void)refreshModels {
+    NSString *active = [_delegate settingsAgentModel];
+    [PBOllama listInstalled:^(NSArray<NSString *> *names, BOOL up) {
+        [self->_modelPopup removeAllItems];
+        if (!up) {
+            self->_modelStatus.stringValue = @"⚠︎ Ollama not running"; self->_modelStatus.textColor = [NSColor systemOrangeColor];
+            [self->_modelPopup addItemWithTitle:active]; return;
+        }
+        NSArray *sorted = [names sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+        for (NSString *n in sorted) [self->_modelPopup addItemWithTitle:n];
+        if ([sorted containsObject:active]) [self->_modelPopup selectItemWithTitle:active];
+        else { [self->_modelPopup insertItemWithTitle:active atIndex:0]; [self->_modelPopup selectItemAtIndex:0]; }
+        self->_modelStatus.stringValue = [NSString stringWithFormat:@"● %lu model%@ installed · on-device",
+                                          (unsigned long)sorted.count, sorted.count == 1 ? @"" : @"s"];
+        self->_modelStatus.textColor = [NSColor systemGreenColor];
+    }];
+}
+- (void)modelChanged:(NSPopUpButton *)p { if (p.titleOfSelectedItem.length) [_delegate settingsSetAgentModel:p.titleOfSelectedItem]; }
+- (void)downloadModel:(id)s {
+    NSString *tag = _downloadPopup.selectedItem.representedObject;
+    if (!tag.length || _pull) return;
+    _downloadBtn.enabled = NO; _downloadPopup.enabled = NO;
+    _dlProgress.hidden = NO; _dlProgress.doubleValue = 0;
+    _dlStatus.stringValue = [NSString stringWithFormat:@"Starting %@…", tag];
+    _pull = [PBOllama new];
+    [_pull pull:tag onProgress:^(double frac, NSString *status) {
+        self->_dlProgress.doubleValue = frac;
+        self->_dlStatus.stringValue = frac > 0 ? [NSString stringWithFormat:@"Downloading %@ — %.0f%%", tag, frac * 100] : (status ?: @"");
+    } done:^(BOOL ok, NSString *err) {
+        self->_downloadBtn.enabled = YES; self->_downloadPopup.enabled = YES; self->_dlProgress.hidden = YES; self->_pull = nil;
+        if (ok) { self->_dlStatus.stringValue = [NSString stringWithFormat:@"✓ %@ ready — now active", tag];
+                  [self->_delegate settingsSetAgentModel:tag]; [self refreshModels]; }
+        else     self->_dlStatus.stringValue = [NSString stringWithFormat:@"⚠︎ %@", err ?: @"download failed"];
+    }];
+}
+- (void)changeAgentTimeout:(NSStepper *)s {
+    NSInteger m = s.integerValue;
+    _agentTimeoutVal.stringValue = m <= 0 ? @"never" : [NSString stringWithFormat:@"%ld min idle", (long)m];
+    [_delegate settingsSetAgentTimeoutMinutes:m];
+}
+
 - (NSTabViewItem *)notesTab {
     NSTabViewItem *it = [[NSTabViewItem alloc] initWithIdentifier:@"notes"];
     it.label = @"Notes";
@@ -263,6 +354,10 @@ static NSTextField *help(NSString *s, NSRect f) {
     _leftVal.stringValue  = [NSString stringWithFormat:@"%ld px", (long)lround(sl)];
     _rightVal.stringValue = [NSString stringWithFormat:@"%ld px", (long)lround(sr)];
     _compactCheck.state = [_delegate settingsCompact] ? NSControlStateValueOn : NSControlStateValueOff;
+    NSInteger atm = [_delegate settingsAgentTimeoutMinutes];
+    _agentTimeoutStep.integerValue = atm;
+    _agentTimeoutVal.stringValue = atm <= 0 ? @"never" : [NSString stringWithFormat:@"%ld min idle", (long)atm];
+    [self refreshModels];
 }
 
 #pragma mark - notes history

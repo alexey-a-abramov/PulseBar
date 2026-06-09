@@ -33,6 +33,11 @@
 - (void)settingsSetSafeRight:(CGFloat)px;
 - (BOOL)settingsCompact;
 - (void)settingsSetCompact:(BOOL)on;
+// Agent
+- (NSString *)settingsAgentModel;
+- (void)settingsSetAgentModel:(NSString *)tag;
+- (NSInteger)settingsAgentTimeoutMinutes;
+- (void)settingsSetAgentTimeoutMinutes:(NSInteger)minutes;
 - (void)settingsEditLayout;
 - (void)settingsQuit;
 @end

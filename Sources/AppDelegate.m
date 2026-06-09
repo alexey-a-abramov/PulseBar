@@ -610,6 +610,16 @@
 }
 - (BOOL)settingsCompact { return self.barView.compactLayout; }
 - (void)settingsSetCompact:(BOOL)on { [self setCompact:on]; }
+- (NSString *)settingsAgentModel { return PBDefaultsString(PBKeyAgentModel, @"gemma3:4b"); }
+- (void)settingsSetAgentModel:(NSString *)tag {
+    if (!tag.length) return;
+    [NSUserDefaults.standardUserDefaults setObject:tag forKey:PBKeyAgentModel];
+    [[self agentCoord] setActiveModel:tag];
+}
+- (NSInteger)settingsAgentTimeoutMinutes { return PBDefaultsInteger(PBKeyAgentSessionTimeout, PBDefaultAgentSessionTimeoutMin); }
+- (void)settingsSetAgentTimeoutMinutes:(NSInteger)m {
+    [NSUserDefaults.standardUserDefaults setInteger:MAX(0, m) forKey:PBKeyAgentSessionTimeout];
+}
 - (NSString *)settingsMediaApp { NSString *a = [NSUserDefaults.standardUserDefaults stringForKey:PBKeyMediaApp]; return a.length ? a : @"Spotify"; }
 - (void)settingsSetMediaApp:(NSString *)app {
     NSString *a = [app stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];

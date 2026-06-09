@@ -26,4 +26,5 @@
 - (void)openAgent;              // open the chat window (no recording)
 - (void)agentDown;              // orb pressed — start/stop voice capture
 - (void)agentUp:(BOOL)wasHold;  // orb released (wasHold = walkie-talkie)
+- (void)setActiveModel:(NSString *)tag;   // switch the live Ollama model
 @end

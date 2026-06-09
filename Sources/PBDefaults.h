@@ -19,6 +19,7 @@ extern NSString * const PBKeySafeLeft;     // NSInteger — px reserved on the l
 extern NSString * const PBKeySafeRight;    // NSInteger — px reserved on the live bar's right for the Control Strip (default 110)
 extern NSString * const PBKeyCompact;      // BOOL  — compact layout: icon-only active mode pill + icon-only action tiles
 extern NSString * const PBKeyAgentSessionTimeout; // NSInteger minutes — start a fresh agent dialogue after this much inactivity (0 = never)
+extern NSString * const PBKeyAgentModel;   // NSString — active Ollama model tag (e.g. "gemma4:12b"); default "gemma3:4b"
 
 // Default values — kept here so they aren't re-typed as literals across the app.
 extern const NSInteger PBDefaultWorkMinutes;          // 25
@@ -31,5 +32,6 @@ extern const NSInteger PBDefaultAgentSessionTimeoutMin; // 5 (0 = never reset th
 // Read a defaults value, returning `fallback` when the key has never been set.
 NSInteger PBDefaultsInteger(NSString *key, NSInteger fallback);
 BOOL      PBDefaultsBool(NSString *key, BOOL fallback);
+NSString *PBDefaultsString(NSString *key, NSString *fallback);   // fallback when unset/empty
 extern NSString * const PBKeyTBBackup;     // NSString — saved Touch Bar PresentationModeGlobal
 extern NSString * const PBKeyLayoutSchemaVersion; // NSInteger — version of the persisted per-tile override schema
