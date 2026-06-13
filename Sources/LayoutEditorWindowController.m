@@ -165,10 +165,7 @@ static NSTextField *lbl(NSString *s, NSRect f, CGFloat sz, BOOL secondary) {
 // Enriched row name: instanced tiles get their instance detail appended.
 - (NSString *)displayNameForType:(TileType)t arg:(int)arg base:(NSString *)base {
     if (t == TWCLOCK) return [NSString stringWithFormat:@"%@ · %s", base, PBCityAt(arg)->name];
-    if (t == TLAUNCH) {
-        const char *l = (arg >= 0 && arg < gLauncherCount) ? gLaunchers[arg].label : "App";
-        return [NSString stringWithFormat:@"%@ · %s", base, l];
-    }
+    if (t == TLAUNCH) return [NSString stringWithFormat:@"%@ · %@", base, pb_launcherLabel(arg)];
     return base;
 }
 
@@ -284,15 +281,18 @@ static NSTextField *lbl(NSString *s, NSRect f, CGFloat sz, BOOL secondary) {
     clockItem.submenu = clockMenu;
     [menu addItem:clockItem];
 
-    // App Launcher → curated apps.
+    // App Launcher → curated + previously-added apps, then pick any other app.
     NSMenuItem *appItem = [[NSMenuItem alloc] initWithTitle:@"App Launcher" action:NULL keyEquivalent:@""];
     NSMenu *appMenu = [[NSMenu alloc] init];
-    for (int i = 0; i < gLauncherCount; i++) {
-        NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:@(gLaunchers[i].label)
+    for (int i = 0; i < pb_launcherCount(); i++) {
+        NSMenuItem *it = [[NSMenuItem alloc] initWithTitle:pb_launcherLabel(i)
                                                     action:@selector(addLauncher:) keyEquivalent:@""];
         it.target = self; it.representedObject = @(i);
         [appMenu addItem:it];
     }
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *other = [[NSMenuItem alloc] initWithTitle:@"Other app…" action:@selector(addCustomApp:) keyEquivalent:@""];
+    other.target = self; [appMenu addItem:other];
     appItem.submenu = appMenu;
     [menu addItem:appItem];
 
@@ -390,6 +390,21 @@ static NSTextField *lbl(NSString *s, NSRect f, CGFloat sz, BOOL secondary) {
 - (void)addClock:(NSMenuItem *)it    { [self addType:TWCLOCK arg:[it.representedObject intValue]]; }
 - (void)addLauncher:(NSMenuItem *)it { [self addType:TLAUNCH arg:[it.representedObject intValue]]; }
 - (void)addSimple:(NSMenuItem *)it   { [self addType:(TileType)[it.representedObject integerValue] arg:0]; }
+
+// Pick any installed .app and register it as a custom launcher, then add it.
+- (void)addCustomApp:(id)sender {
+    NSOpenPanel *p = [NSOpenPanel openPanel];
+    p.canChooseFiles = YES; p.canChooseDirectories = NO; p.allowsMultipleSelection = NO;
+    p.allowedFileTypes = @[@"app"];
+    p.directoryURL = [NSURL fileURLWithPath:@"/Applications"];
+    p.prompt = @"Add"; p.message = @"Choose an app to add as a launcher tile";
+    if ([p runModal] != NSModalResponseOK || !p.URL) return;
+    NSString *name = p.URL.lastPathComponent.stringByDeletingPathExtension;
+    NSString *label = name.uppercaseString;
+    if (label.length > 10) label = [label substringToIndex:10];
+    int arg = pb_addCustomLauncher(label, name);
+    [self addType:TLAUNCH arg:arg];
+}
 
 - (void)addType:(TileType)t arg:(int)arg {
     pb_composeAdd(_mode, t, arg);

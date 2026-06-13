@@ -34,6 +34,16 @@ typedef struct { const char *label; const char *query; const char *cmd; } Launch
 extern const Launcher gLaunchers[];
 extern const int gLauncherCount;
 
+// Launchers a TLAUNCH tile can reference by `arg`: the built-in gLaunchers
+// (arg 0..gLauncherCount-1) plus any user-added custom apps (arg ≥ gLauncherCount,
+// persisted in PBKeyCustomLaunchers). These resolvers span both.
+int pb_launcherCount(void);            // built-in + custom
+NSString *pb_launcherLabel(int arg);   // short bar caption
+NSString *pb_launcherQuery(int arg);   // app name to resolve/open
+NSString *pb_launcherCmd(int arg);     // terminal command, or nil to just open the app
+// Register a custom app launcher (dedup by query); returns its `arg`.
+int pb_addCustomLauncher(NSString *label, NSString *query);
+
 // Built-in tile list for `mode`, left→right; returns the count written to `out`
 // (caller supplies TileDef[16]).
 int tilesForMode(NSInteger mode, TileDef *out);

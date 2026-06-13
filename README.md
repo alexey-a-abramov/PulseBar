@@ -107,8 +107,9 @@ to expand again.
 **Settings → Layout → Customize layout…** (or the menu bar) opens a per-mode editor. Pick a
 mode and: drag **Size/Min** to resize a tile, toggle **Show** to hide it, lower **Priority** so it
 drops first when space is tight, **▲/▼** to reorder, **✕** to remove. **Add tile…** adds a
-**World Clock** (any city from the master list — DST-correct), an **App Launcher**, or any other
-tile — and the same tile can live in several modes. Changes are per-mode and reversible
+**World Clock** (any city from the master list — DST-correct), an **App Launcher** (a curated app
+or **Other app…** to pick any installed `.app`, so Actions/custom apps like Dynalist are fully
+manageable), or any other tile — and the same tile can live in several modes. Changes are per-mode and reversible
 (**Reset this mode**). The layout engine caches packing so none of this costs a frame.
 
 Some Actions prompt for permission the first time (Screenshot → Screen Recording,

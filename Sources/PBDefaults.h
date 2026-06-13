@@ -20,6 +20,7 @@ extern NSString * const PBKeySafeRight;    // NSInteger — px reserved on the l
 extern NSString * const PBKeyCompact;      // BOOL  — legacy compact toggle (v1 schema; migrated to PBKeyDensity, never written now)
 extern NSString * const PBKeyDensity;      // NSInteger PBDensity — 0 Auto (adapt to space) · 1 Full · 2 Compact
 extern NSString * const PBKeyTabsCollapsed; // BOOL — collapse the mode-tab strip to the active pill (default NO)
+extern NSString * const PBKeyCustomLaunchers; // NSArray of {label,query} — user-added app launchers beyond the curated set
 extern NSString * const PBKeyAgentSessionTimeout; // NSInteger minutes — start a fresh agent dialogue after this much inactivity (0 = never)
 extern NSString * const PBKeyAgentModel;   // NSString — active Ollama model tag (e.g. "gemma4:12b"); default "gemma3:4b"
 

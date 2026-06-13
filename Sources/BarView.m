@@ -74,10 +74,10 @@ static NSColor *modePastel(NSInteger m) {
 
 // The real (colourful) app icon for a launcher query, cached so we don't hit
 // the disk on every 1 Hz redraw. NSNull marks a miss (app not installed).
-static NSImage *launcherIcon(const char *queryC) {
+static NSImage *launcherIcon(NSString *q) {
     static NSMutableDictionary<NSString *, id> *cache;
     if (!cache) cache = [NSMutableDictionary dictionary];
-    NSString *q = @(queryC);
+    if (!q.length) return nil;
     id hit = cache[q];
     if (hit) return (hit == [NSNull null]) ? nil : hit;
     PBAppEntry *e = [[PBAppIndex shared] bestMatchFor:q];
@@ -577,13 +577,12 @@ static int viewCount(TileType t) {
             [self symbol:@"sparkles" in:orb pt:11 color:[NSColor whiteColor]];
             break; }
         case TLAUNCH: {
-            const Launcher *L = &gLaunchers[(tile.arg >= 0 && tile.arg < gLauncherCount) ? tile.arg : 0];
-            NSImage *icon = launcherIcon(L->query);
+            NSImage *icon = launcherIcon(pb_launcherQuery((int)tile.arg));
             CGFloat d = 18, ix = NSMidX(r) - d / 2;
             if (icon) [icon drawInRect:NSMakeRect(ix, 4, d, d) fromRect:NSZeroRect
                              operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
             else [self symbol:@"app.dashed" in:NSMakeRect(r.origin.x, 4, r.size.width, d) pt:14 color:[self accent]];
-            [self tc:@(L->label) cx:NSMidX(r) y:23 sz:6.5 w:NSFontWeightBold c:[self dim]];
+            [self tc:pb_launcherLabel((int)tile.arg) cx:NSMidX(r) y:23 sz:6.5 w:NSFontWeightBold c:[self dim]];
             break; }
         case TWCLOCK: {   // world clock — DST-correct time for the city at `arg`
             int ci = (int)tile.arg;
@@ -1026,8 +1025,8 @@ static int viewCount(TileType t) {
             _view[t->type] = (_view[t->type] + 1) % viewCount(t->type); [self setNeedsDisplay:YES]; break;
         case TSETTINGS: [d barOpenSettings]; break;
         case TAGENT:    [d barOpenAgent]; break;
-        case TLAUNCH: { const Launcher *L = &gLaunchers[(t->arg >= 0 && t->arg < gLauncherCount) ? t->arg : 0];
-                        if (L->cmd) [d barRunTerminalCommand:@(L->cmd)]; else [d barLaunchApp:@(L->query)]; break; }
+        case TLAUNCH: { NSString *cmd = pb_launcherCmd((int)t->arg);
+                        if (cmd) [d barRunTerminalCommand:cmd]; else [d barLaunchApp:pb_launcherQuery((int)t->arg)]; break; }
         case TFKEY:     [d barSendFunctionKey:t->arg]; break;
         case TAPP_HIDE: [d barAppAction:@"hide"]; break;
         case TAPP_QUIT: [d barAppAction:@"quit"]; break;

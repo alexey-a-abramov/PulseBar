@@ -15,6 +15,40 @@ const Launcher gLaunchers[] = {
 };
 const int gLauncherCount = (int)(sizeof(gLaunchers) / sizeof(gLaunchers[0]));
 
+// Custom launchers (user-added apps) live in PBKeyCustomLaunchers as an array of
+// {label, query}; their arg is gLauncherCount + index so it never collides with
+// a built-in. The TLAUNCH tile resolves any arg through these four functions.
+static NSArray<NSDictionary *> *customLaunchers(void) {
+    NSArray *a = [NSUserDefaults.standardUserDefaults arrayForKey:PBKeyCustomLaunchers];
+    return [a isKindOfClass:NSArray.class] ? a : @[];
+}
+int pb_launcherCount(void) { return gLauncherCount + (int)customLaunchers().count; }
+
+NSString *pb_launcherLabel(int arg) {
+    if (arg >= 0 && arg < gLauncherCount) return @(gLaunchers[arg].label);
+    NSArray *c = customLaunchers(); int i = arg - gLauncherCount;
+    if (i >= 0 && i < (int)c.count) return c[i][@"label"] ?: c[i][@"query"];
+    return @"APP";
+}
+NSString *pb_launcherQuery(int arg) {
+    if (arg >= 0 && arg < gLauncherCount) return @(gLaunchers[arg].query);
+    NSArray *c = customLaunchers(); int i = arg - gLauncherCount;
+    if (i >= 0 && i < (int)c.count) return c[i][@"query"] ?: @"";
+    return @"";
+}
+NSString *pb_launcherCmd(int arg) {
+    if (arg >= 0 && arg < gLauncherCount) return gLaunchers[arg].cmd ? @(gLaunchers[arg].cmd) : nil;
+    return nil;   // custom launchers just open the app
+}
+int pb_addCustomLauncher(NSString *label, NSString *query) {
+    NSMutableArray *c = [customLaunchers() mutableCopy];
+    for (int i = 0; i < (int)c.count; i++)
+        if ([c[i][@"query"] isEqualToString:query]) return gLauncherCount + i;   // dedup
+    [c addObject:@{ @"label": label.length ? label : query, @"query": query }];
+    [NSUserDefaults.standardUserDefaults setObject:c forKey:PBKeyCustomLaunchers];
+    return gLauncherCount + (int)c.count - 1;
+}
+
 int tilesForMode(NSInteger m, TileDef *out) {
     int n = 0;
     #define ADD(t, wt, pr, mn)       do { out[n++] = (TileDef){(t), (wt), (pr), (mn), 0, 0}; } while (0)
