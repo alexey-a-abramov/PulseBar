@@ -39,6 +39,7 @@ int main(void) { @autoreleasepool {
     Pomodoro *pomo = [Pomodoro new]; [pomo toggle]; v.pomodoro = pomo;
     v.caffeinated = YES;
     v.uptime = 3 * 86400 + 4 * 3600 + 600;
+    v.thermal = (PBThermalSample){ .hasTemp = 1, .cpuTempC = 54, .cpuTempMaxC = 57, .hasFan = 1, .fanRPM = 1200, .fanMaxRPM = 7200 };
     v.safeAreaLeftInset = 0; v.safeAreaRightInset = 110;   // default fit: clears the collapsed Control Strip
 
     PBFeedSample(v, 70);
@@ -54,6 +55,7 @@ int main(void) { @autoreleasepool {
     {
         BarView *tight = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, 640, H)];
         tight.pomodoro = pomo; tight.caffeinated = YES; tight.uptime = v.uptime;
+        tight.thermal = v.thermal;
         tight.safeAreaLeftInset = 0; tight.safeAreaRightInset = 110;
         tight.density = PBDensityAuto;
         PBFeedSample(tight, 70);

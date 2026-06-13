@@ -6,6 +6,7 @@
 #import "Stats.h"
 #import "Controls.h"
 #import "PBLayout.h"
+#import "PBThermal.h"
 
 @class Pomodoro;
 
@@ -62,6 +63,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic, strong) NSImage  *appIcon;
 @property (nonatomic) double uptime;           // seconds since boot (System mode)
 @property (nonatomic) double sessionSeconds;   // length of the current active working session
+@property (nonatomic) PBThermalSample thermal; // CPU temp + fan (TTEMP tile)
 @property (nonatomic) BOOL   noteRecording;    // Focus side-note tile is capturing (turns red)
 @property (nonatomic) BOOL   breakReminder;    // ⌃-unmutable "take a break" banner is showing
 @property (nonatomic, copy)   NSString *breakReminderText;  // e.g. "1h 26m" — session length shown in the banner

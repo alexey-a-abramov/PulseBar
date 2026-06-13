@@ -23,8 +23,8 @@ int tilesForMode(NSInteger m, TileDef *out) {
     switch (m) {
         case BarModeSystem:   // capped widths → compact chips + a safe right margin (never cut at the battery)
             ADDM(TCPU,    1.6, 100, 64, 120);  ADDM(TMEM,   1.05, 90, 56, 112);  ADDM(TGPU,   0.7, 45, 44, 78);
-            ADDM(TNET,    1.0,  70, 60, 100);  ADDM(TDISK,  1.0,  60, 56, 104);  ADDM(TUPTIME,0.7, 30, 52, 72);
-            ADDM(TBATT,   0.3,  80, 40, 46);
+            ADDM(TNET,    1.0,  70, 60, 100);  ADDM(TDISK,  1.0,  60, 56, 104);  ADDM(TTEMP,  0.7, 55, 56, 92);
+            ADDM(TUPTIME, 0.7, 30, 52, 72);    ADDM(TBATT,   0.3,  80, 40, 46);
             break;
         case BarModeMedia:
             ADD(TMEDIA,  3.0, 100, 140); ADD(TVOL,   1.2,  80, 90);

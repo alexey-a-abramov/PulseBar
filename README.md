@@ -16,7 +16,7 @@ the panel cross-fades, and your choice is remembered:
 
 | Mode | Contents |
 |------|----------|
-| **System**  | CPU · MEM · GPU · NET · DISK · uptime/session · battery |
+| **System**  | CPU · MEM · GPU · NET · DISK · **temp/fan** · uptime/session · battery |
 | **Media**   | now-playing transport (◀ ⏯ ▶) · scrubber (tap to seek) · volume |
 | **Focus**   | adaptive Pomodoro · **session** · voice side-note (hold to talk) · ☕ caffeine · Reminder · Lock |
 | **Classic** | brightness · volume · media (the Control-Strip basics) |
@@ -53,6 +53,8 @@ as a table any time via the menu bar → **Export Side-Notes (CSV)** (writes
 - **GPU** — utilisation % + sparkline (IOAccelerator).
 - **NET** — live ↓ / ↑ throughput + sparkline.
 - **DISK** — read/write I/O + free space.
+- **TEMP** — CPU die temperature (°C, green→amber→red ramp) + fan RPM. Apple-Silicon temps come from the IOHIDEventSystemClient thermal sensors (not the SMC); fans from AppleSMC.
+- **World Clock** — any city from a master list, DST/summer-time correct, with a live ±offset vs. local and a next/prev-day badge. Add several; mix into any mode.
 
 **Controls (tap / drag):**
 - **Now Playing** — track + ◀ / ⏯ / ▶ (MediaRemote).
@@ -130,7 +132,9 @@ Sources/
   main.m                    accessory NSApplication (no Dock)
   AppDelegate.m             SPI presentation · 1 Hz sampling · actions · full-bar · LaunchAgent
   BarView.m                 interactive tile rendering + hit-testing (drives the PBLayout engine)
-  PBLayout.m                AppKit-free tile model + size-aware packing engine (unit-tested)
+  PBLayout.m                AppKit-free tile model + size-aware packing engine + per-mode composition (unit-tested)
+  PBClock.m                 world-clock master city list + DST-correct formatting
+  PBThermal.m               CPU temperature (IOHIDEventSystemClient) + fan RPM (AppleSMC)
   PBFormat.m · PBProcess.m  pure value formatters · shared NSTask helpers
   PBLoginItem.m · PBBreakReminder.m  login LaunchAgent · session break-reminder nudge
   Stats.m                   cpu/per-core/mem/net/battery/gpu/disk/top-process

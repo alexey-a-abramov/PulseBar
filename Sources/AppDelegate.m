@@ -327,6 +327,14 @@
     } else { _topBuf[0] = '\0'; _topCPU = 0; }
     _tick++;
 
+    // CPU temp + fan: private-SPI reads (IOHIDEventSystemClient + AppleSMC), cheap
+    // but sampled at ~0.5 Hz (seeded on the first tick so the TTEMP tile isn't blank).
+    if (_tick == 1 || _tick % 2 == 0) {
+        PBThermalSample th = PBThermalRead();
+        self.barView.thermal = th;
+        self.mirror.bar.thermal = th;
+    }
+
     // (No periodic re-assert: it re-presented the modal every ~10s, which read as
     // the bar "flickering"/jumping. The safe-area insets now keep the agent orb and
     // tiles visible even when macOS re-decorates our modal with its ✕, so reclaiming

@@ -590,7 +590,31 @@ static int viewCount(TileType t) {
             if (dd != 0) [self t:(dd > 0 ? @"+1d" : @"−1d") rx:NSMaxX(r) - 4 y:NSMaxY(r) - 10
                               sz:7.5 w:NSFontWeightBold c:(dd > 0 ? [self green] : [self pink])];
             break; }
-        case TTEMP: break;   // CPU temp + fan — implemented with the thermal sampler
+        case TTEMP: {   // CPU temperature + fan, glanceable colour ramp
+            PBThermalSample th = _thermal;
+            [self label:@"TEMP" in:r];
+            if (th.hasTemp) {
+                // green < 65 · amber 65–85 · red > 85 (M-series throttles ~100°C)
+                double t = th.cpuTempC;
+                NSColor *tc = t < 65 ? [self green]
+                            : (t < 85 ? [NSColor colorWithSRGBRed:1 green:0.72 blue:0.22 alpha:1]
+                                      : [NSColor colorWithSRGBRed:1 green:0.36 blue:0.30 alpha:1]);
+                [self symbol:@"thermometer.medium" in:NSMakeRect(r.origin.x + 2, 11, 14, 16) pt:12 color:tc];
+                [self t:[NSString stringWithFormat:@"%.0f°", t] at:NSMakePoint(r.origin.x + 17, 12) sz:13 w:NSFontWeightBold c:tc];
+            } else {
+                [self t:@"—" at:NSMakePoint(r.origin.x + 6, 12) sz:13 w:NSFontWeightBold c:[self dim]];
+            }
+            if (th.hasFan) {
+                NSString *fan = th.fanRPM < 1 ? @"idle" : [NSString stringWithFormat:@"%.0f", th.fanRPM];
+                [self t:fan rx:NSMaxX(r) - 4 y:3 sz:8 w:NSFontWeightSemibold c:[self dim]];
+                if (th.fanRPM >= 1 && th.fanMaxRPM > 0) {   // tiny fan-load underline
+                    CGFloat bx = r.origin.x + 6, bw = r.size.width - 12;
+                    double frac = MAX(0, MIN(1, th.fanRPM / th.fanMaxRPM));
+                    [[[self dim] colorWithAlphaComponent:0.4] setFill]; NSRectFill(NSMakeRect(bx, NSMaxY(r) - 3, bw, 1.5));
+                    [[self accent] setFill]; NSRectFill(NSMakeRect(bx, NSMaxY(r) - 3, bw * frac, 1.5));
+                }
+            }
+            break; }
         case TFKEY: case TAPP_HIDE: case TAPP_QUIT: case TTAB: break;   // drawn inline by overlays
     }
     [NSGraphicsContext restoreGraphicsState];

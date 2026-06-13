@@ -36,9 +36,9 @@ int main(void) { @autoreleasepool {
     for (NSString *n in @[@"CPU", @"Memory", @"GPU", @"Network", @"Disk I/O", @"Uptime", @"Battery"])
         [ud removeObjectForKey:systemKey(n)];
 
-    NSArray *full = @[@"CPU", @"Memory", @"GPU", @"Network", @"Disk I/O", @"Uptime", @"Battery"];
+    NSArray *full = @[@"CPU", @"Memory", @"GPU", @"Network", @"Disk I/O", @"Temperature", @"Uptime", @"Battery"];
     NSArray *wide = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
-    CHECK(eq(wide, full, "wide"), "System @700 shows all 7 tiles in order");
+    CHECK(eq(wide, full, "wide"), "System @700 shows all 8 tiles in order");
 
     // Tight widths drop lowest-priority first (Uptime, then GPU, Disk, Net, Batt).
     NSArray *w200 = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:200];
@@ -64,7 +64,7 @@ int main(void) { @autoreleasepool {
     pb_bumpLayoutGen();
     NSArray *hidden = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
     CHECK(![hidden containsObject:@"Uptime"], "force-hidden Uptime is absent at full width");
-    CHECK(hidden.count == 6 && [hidden.firstObject isEqualToString:@"CPU"], "remaining 6 tiles still present in order");
+    CHECK(hidden.count == 7 && [hidden.firstObject isEqualToString:@"CPU"], "remaining 7 tiles still present in order");
     [ud removeObjectForKey:systemKey(@"Uptime")];   // cleanup
     pb_bumpLayoutGen();
 
@@ -103,8 +103,8 @@ int main(void) { @autoreleasepool {
     [ud setObject:@{@"removed": @[uptimeTok]} forKey:composeSystem];
     pb_bumpLayoutGen();
     NSArray *composedRm = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
-    CHECK(![composedRm containsObject:@"Uptime"] && composedRm.count == 6,
-          "compose: removed Uptime is gone, 6 remain");
+    CHECK(![composedRm containsObject:@"Uptime"] && composedRm.count == 7,
+          "compose: removed Uptime is gone, 7 remain");
 
     // Add: append Volume (a tile System doesn't ship) via composition.
     [ud setObject:@{@"added": @[@{@"token": volTok, @"arg": @0, @"prio": @90, @"minW": @40}]}
