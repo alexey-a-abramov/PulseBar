@@ -44,6 +44,11 @@ const PBCity *PBCityAt(int idx) {
     return &gCities[idx];
 }
 
+// "Now" — the real current time, unless a test froze it (golden render).
+static NSDate *gFrozenNow;
+void PBClockSetFrozenNow(NSDate *fixed) { gFrozenNow = fixed; }
+static NSDate *clockNow(void) { return gFrozenNow ?: [NSDate date]; }
+
 // Cached NSTimeZone per city id (timeZoneWithName parses the zoneinfo file each
 // call otherwise). Main-thread only, like all bar drawing.
 static NSTimeZone *zoneForCity(int idx) {
@@ -59,13 +64,13 @@ NSString *PBClockTimeForCity(int idx) {
     static NSDateFormatter *df;
     if (!df) { df = [NSDateFormatter new]; df.dateFormat = @"HH:mm"; df.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"]; }
     df.timeZone = zoneForCity(idx);
-    return [df stringFromDate:[NSDate date]];
+    return [df stringFromDate:clockNow()];
 }
 
 // Whole/half-hour offset of the city vs. the local zone, evaluated for *now* so
 // asymmetric DST transitions are honoured.
 static double offsetHoursVsLocal(int idx) {
-    NSDate *now = [NSDate date];
+    NSDate *now = clockNow();
     NSInteger city  = [zoneForCity(idx) secondsFromGMTForDate:now];
     NSInteger local = [NSTimeZone.localTimeZone secondsFromGMTForDate:now];
     return (city - local) / 3600.0;
@@ -83,7 +88,7 @@ NSString *PBClockOffsetTag(int idx) {
 }
 
 int PBClockDayDelta(int idx) {
-    NSDate *now = [NSDate date];
+    NSDate *now = clockNow();
     NSCalendar *cal = [NSCalendar calendarWithIdentifier:NSCalendarIdentifierGregorian];
 
     cal.timeZone = NSTimeZone.localTimeZone;

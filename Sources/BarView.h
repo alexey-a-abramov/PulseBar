@@ -17,6 +17,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
     BarModeProductivity,
     BarModeClassic,
     BarModeShortcuts,
+    BarModeGlance,        // dashboard: key metrics + temp + world clocks (clocks' home)
     BarModeCount
 };
 

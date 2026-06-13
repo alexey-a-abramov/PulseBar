@@ -21,6 +21,7 @@ the panel cross-fades, and your choice is remembered:
 | **Focus**   | adaptive Pomodoro · **session** · voice side-note (hold to talk) · ☕ caffeine · Reminder · Lock |
 | **Classic** | brightness · volume · media (the Control-Strip basics) |
 | **Actions** | colourful app launcher (Arc · Termius · Zed · Claude · Claude Code · Dynalist) · Screenshot · Lock |
+| **Glance**  | at-a-glance dashboard: CPU · MEM · temp/fan · **world clocks** (NYC · London · Tokyo by default) · battery — the clocks' home (cities are editable) |
 
 The agent orb stays pinned on the right in every mode; the clock and ⚙ settings
 live in the menu bar (not the bar).

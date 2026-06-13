@@ -4,6 +4,7 @@
 //
 #import <AppKit/AppKit.h>
 #import "../Sources/BarView.h"
+#import "../Sources/PBClock.h"
 #import "../Sources/Pomodoro.h"
 #import "../Sources/PreviewData.h"
 
@@ -33,6 +34,7 @@ static void writeGrid(BarView *v, CGFloat W, CGFloat H, CGFloat S, NSString *pat
 
 int main(void) { @autoreleasepool {
     [NSApplication sharedApplication];
+    PBClockSetFrozenNow([NSDate dateWithTimeIntervalSince1970:1718283600]);   // freeze world clocks for a stable Glance row
 
     CGFloat W = 1004, H = 30, S = 2.6;
     BarView *v = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, W, H)];

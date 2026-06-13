@@ -43,6 +43,7 @@ static NSString *modeIcon(NSInteger m) {
         case BarModeProductivity: return @"timer";
         case BarModeClassic:      return @"apple.logo";
         case BarModeShortcuts:    return @"bolt.fill";
+        case BarModeGlance:       return @"gauge.with.dots.needle.33percent";
     }
     return @"square";
 }
@@ -53,6 +54,7 @@ static NSString *modeLabel(NSInteger m) {
         case BarModeProductivity: return @"FOCUS";
         case BarModeClassic:      return @"CLASSIC";
         case BarModeShortcuts:    return @"ACTIONS";
+        case BarModeGlance:       return @"GLANCE";
     }
     return @"";
 }
@@ -64,6 +66,7 @@ static NSColor *modePastel(NSInteger m) {
         case BarModeProductivity: return [NSColor colorWithSRGBRed:0.99 green:0.85 blue:0.66 alpha:1];  // peach
         case BarModeClassic:      return [NSColor colorWithSRGBRed:0.70 green:0.92 blue:0.86 alpha:1];  // mint
         case BarModeShortcuts:    return [NSColor colorWithSRGBRed:0.82 green:0.77 blue:0.99 alpha:1];  // lavender
+        case BarModeGlance:       return [NSColor colorWithSRGBRed:0.74 green:0.90 blue:0.78 alpha:1];  // sage
     }
     return [NSColor colorWithSRGBRed:0.66 green:0.83 blue:0.99 alpha:1];
 }
@@ -1076,6 +1079,7 @@ static int viewCount(TileType t) {
         case BarModeProductivity: return @"Productivity";
         case BarModeClassic:      return @"Classic";
         case BarModeShortcuts:    return @"Shortcuts";
+        case BarModeGlance:       return @"Glance";
         default:                  return @"Mode";
     }
 }

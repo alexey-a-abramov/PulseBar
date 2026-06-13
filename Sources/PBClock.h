@@ -27,3 +27,7 @@ NSString *PBClockOffsetTag(int idx);
 
 // Calendar-day delta vs. local now: -1 (yesterday), 0 (today), +1 (tomorrow).
 int PBClockDayDelta(int idx);
+
+// Test seam: freeze "now" so clock output is deterministic (golden render).
+// Pass nil to resume using the real current time.
+void PBClockSetFrozenNow(NSDate *fixed);

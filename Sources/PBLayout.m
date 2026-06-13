@@ -20,6 +20,7 @@ int tilesForMode(NSInteger m, TileDef *out) {
     #define ADD(t, wt, pr, mn)       do { out[n++] = (TileDef){(t), (wt), (pr), (mn), 0, 0}; } while (0)
     #define ADDM(t, wt, pr, mn, mx)  do { out[n++] = (TileDef){(t), (wt), (pr), (mn), (mx), 0}; } while (0)
     #define ADDL(ix, wt, pr, mn)     do { out[n++] = (TileDef){TLAUNCH, (wt), (pr), (mn), 0, (ix)}; } while (0)
+    #define ADDC(city, pr, mn, mx)   do { out[n++] = (TileDef){TWCLOCK, 0.7, (pr), (mn), (mx), (city)}; } while (0)
     switch (m) {
         case BarModeSystem:   // capped widths → compact chips + a safe right margin (never cut at the battery)
             ADDM(TCPU,    1.6, 100, 64, 120);  ADDM(TMEM,   1.05, 90, 56, 112);  ADDM(TGPU,   0.7, 45, 44, 78);
@@ -41,10 +42,18 @@ int tilesForMode(NSInteger m, TileDef *out) {
             for (int i = 0; i < gLauncherCount; i++) ADDL(i, 0, 90 - i, 42);   // ~icon + ~1.3·icon pitch
             ADD(TSC_SHOT, 0, 40, 42); ADD(TSC_LOCK, 0, 35, 42);
             break;
+        case BarModeGlance:   // at-a-glance dashboard + the world-clock home (cities are user-editable)
+            ADDM(TCPU,   1.2, 100, 60, 96);  ADDM(TMEM,  1.0, 90, 56, 96);  ADDM(TTEMP, 0.9, 85, 56, 92);
+            ADDC(5,  60, 54, 88);   // New York
+            ADDC(9,  58, 54, 88);   // London
+            ADDC(25, 56, 54, 88);   // Tokyo
+            ADDM(TBATT,  0.4,  95, 40, 46);
+            break;
     }
     #undef ADD
     #undef ADDM
     #undef ADDL
+    #undef ADDC
     return n;
 }
 
@@ -86,7 +95,7 @@ static NSString *modeToken(NSInteger m) {
     switch (m) {
         case BarModeSystem: return @"system";  case BarModeMedia: return @"media";
         case BarModeProductivity: return @"productivity"; case BarModeClassic: return @"classic";
-        case BarModeShortcuts: return @"shortcuts";
+        case BarModeShortcuts: return @"shortcuts"; case BarModeGlance: return @"glance";
         default: return [NSString stringWithFormat:@"m%ld", (long)m];
     }
 }
