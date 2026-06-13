@@ -646,6 +646,7 @@
 
 // Redraw the live bar (and mirror) when the size editor saves a change.
 - (void)layoutChanged:(NSNotification *)n {
+    pb_bumpLayoutGen();   // any persisted-layout write invalidates the packVisible memo
     [self.barView setNeedsDisplay:YES];
     [self.mirror.bar setNeedsDisplay:YES];
 }

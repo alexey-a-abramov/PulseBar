@@ -57,11 +57,16 @@ int main(void) { @autoreleasepool {
     CHECK(sc.count == 8, "Shortcuts @700 shows all 8 tiles");
 
     // Force-hide override removes a tile even when there's room for it.
+    // (Direct defaults writes bypass PBLayoutChangedNotification, so the test
+    // bumps the layout gen by hand to invalidate the packVisible memo — the app
+    // does this automatically via -layoutChanged: / setOrderOverride.)
     [ud setObject:@{@"hidden": @YES} forKey:systemKey(@"Uptime")];
+    pb_bumpLayoutGen();
     NSArray *hidden = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
     CHECK(![hidden containsObject:@"Uptime"], "force-hidden Uptime is absent at full width");
     CHECK(hidden.count == 6 && [hidden.firstObject isEqualToString:@"CPU"], "remaining 6 tiles still present in order");
     [ud removeObjectForKey:systemKey(@"Uptime")];   // cleanup
+    pb_bumpLayoutGen();
 
     NSArray *restored = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
     CHECK(eq(restored, full, "restored"), "removing the override restores Uptime");
@@ -72,13 +77,47 @@ int main(void) { @autoreleasepool {
     NSMutableDictionary *battOv = [([ud dictionaryForKey:battKey] ?: @{}) mutableCopy];
     battOv[@"order"] = @(-1);   // sorts ahead of every natural index (0..n-1)
     [ud setObject:battOv forKey:battKey];
+    pb_bumpLayoutGen();
     NSArray *reordered = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
     CHECK([reordered.firstObject isEqualToString:@"Battery"] && reordered.count == full.count,
           "order override moves Battery to the front at full width");
     [ud removeObjectForKey:battKey];   // cleanup — keep the test idempotent
+    pb_bumpLayoutGen();
 
     NSArray *reset = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
     CHECK(eq(reset, full, "reset"), "removing the order override restores natural order");
+
+    // ---- Composition: per-mode add / remove (PBCompose.<mode>) -------------
+    // Build the compose key + a couple of tile tokens by stripping the trailing
+    // component off the override keys, so the test stays free of hardcoded tokens.
+    NSString *composeSystem = [@"PBCompose." stringByAppendingString:
+        [systemKey(@"CPU") componentsSeparatedByString:@"."][1]];
+    NSString *uptimeTok = [systemKey(@"Uptime") componentsSeparatedByString:@"."].lastObject;
+    NSString *volTok = nil;
+    for (NSDictionary *d in [BarView defaultLayoutForMode:BarModeClassic])
+        if ([d[@"name"] isEqualToString:@"Volume"])
+            volTok = [[BarView overrideKeyForMode:BarModeClassic type:[d[@"type"] integerValue]]
+                      componentsSeparatedByString:@"."].lastObject;
+
+    // Remove: drop Uptime from System via composition (not a per-tile hidden).
+    [ud setObject:@{@"removed": @[uptimeTok]} forKey:composeSystem];
+    pb_bumpLayoutGen();
+    NSArray *composedRm = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
+    CHECK(![composedRm containsObject:@"Uptime"] && composedRm.count == 6,
+          "compose: removed Uptime is gone, 6 remain");
+
+    // Add: append Volume (a tile System doesn't ship) via composition.
+    [ud setObject:@{@"added": @[@{@"token": volTok, @"arg": @0, @"prio": @90, @"minW": @40}]}
+           forKey:composeSystem];
+    pb_bumpLayoutGen();
+    NSArray *composedAdd = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
+    CHECK([composedAdd containsObject:@"Volume"] && composedAdd.count == full.count + 1,
+          "compose: added Volume appears, count is full+1");
+
+    [ud removeObjectForKey:composeSystem];   // cleanup
+    pb_bumpLayoutGen();
+    NSArray *composedReset = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
+    CHECK(eq(composedReset, full, "composeReset"), "removing the composition restores the default set");
 
     // ---- Auto-density predicate (pure; no overrides set at this point) ----
     BOOL anyCompactAtDefault = NO;

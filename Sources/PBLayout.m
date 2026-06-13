@@ -92,13 +92,17 @@ static NSString *modeToken(NSInteger m) {
 NSString *overrideKey(NSInteger mode, TileType t) {
     return [NSString stringWithFormat:@"PBTile.%@.%@", modeToken(mode), tileToken(t)];
 }
-// Order key for a tile *instance*. Launchers all share the TLAUNCH token, so they
-// get a per-instance suffix (".<arg>") to be orderable individually; every other
-// tile keeps its plain override key (so the layout editor / existing overrides are
-// unaffected).
+// Some tile types can appear MULTIPLE times in a mode (launchers; soon world
+// clocks) — they're disambiguated by `arg`, so their override/order keys get a
+// per-instance ".<arg>" suffix and they don't share one size-override dict. Every
+// other type is single-instance per mode. Add new instanced types here, in ONE place.
+static BOOL pb_isInstanced(TileType t) { return t == TLAUNCH; }
+
+// Order key for a tile *instance*: instanced types get a ".<arg>" suffix so each
+// instance orders individually; single-instance types keep the plain override key.
 static NSString *orderKeyForType(NSInteger mode, TileType t, int arg) {
-    return (t == TLAUNCH) ? [overrideKey(mode, t) stringByAppendingFormat:@".%d", arg]
-                          : overrideKey(mode, t);
+    return pb_isInstanced(t) ? [overrideKey(mode, t) stringByAppendingFormat:@".%d", arg]
+                             : overrideKey(mode, t);
 }
 // Persist a tile instance's left→right display order (drag-to-arrange + editor).
 void setOrderOverride(NSInteger mode, TileType t, int arg, NSInteger order) {
@@ -107,6 +111,46 @@ void setOrderOverride(NSInteger mode, TileType t, int arg, NSInteger order) {
     NSMutableDictionary *o = [([ud dictionaryForKey:key] ?: @{}) mutableCopy];
     o[@"order"] = @(order);
     [ud setObject:o forKey:key];
+    pb_bumpLayoutGen();   // drag-to-arrange writes order without posting the notification
+}
+
+// ---- per-mode composition (user add/remove of widgets) --------------------
+// PBCompose.<modeTok> = { "removed": [<instanceKey>…], "added": [{token,arg,weight,
+// prio,minW,maxW}…] }. Absent ⇒ the mode is exactly its built-in tilesForMode().
+static NSString *composeKey(NSInteger mode) { return [@"PBCompose." stringByAppendingString:modeToken(mode)]; }
+// Stable per-instance identity for removal matching (token, or token.arg if instanced).
+static NSString *instanceKey(TileType t, int arg) {
+    NSString *tok = tileToken(t);
+    return pb_isInstanced(t) ? [tok stringByAppendingFormat:@".%d", arg] : tok;
+}
+// The mode's effective tile list: built-in seed, minus `removed`, plus `added`.
+static int composedTilesForMode(NSInteger mode, TileDef *out) {
+    TileDef seed[16];
+    int n = tilesForMode(mode, seed);
+    NSDictionary *comp = [NSUserDefaults.standardUserDefaults dictionaryForKey:composeKey(mode)];
+    if (![comp isKindOfClass:NSDictionary.class]) { for (int i = 0; i < n; i++) out[i] = seed[i]; return n; }
+    NSArray *removed = [comp[@"removed"] isKindOfClass:NSArray.class] ? comp[@"removed"] : nil;
+    NSArray *added   = [comp[@"added"]   isKindOfClass:NSArray.class] ? comp[@"added"]   : nil;
+    int m = 0;
+    for (int i = 0; i < n && m < 16; i++) {
+        if (removed && [removed containsObject:instanceKey(seed[i].type, seed[i].arg)]) continue;
+        out[m++] = seed[i];
+    }
+    for (NSDictionary *a in added) {
+        if (m >= 16) break;
+        if (![a isKindOfClass:NSDictionary.class]) continue;
+        TileType t = tileTypeForToken(a[@"token"]);
+        if ((int)t < 0) continue;
+        TileDef d;
+        d.type   = t;
+        d.arg    = [a[@"arg"] intValue];
+        d.weight = a[@"weight"] ? [a[@"weight"] doubleValue] : 0.8;
+        d.prio   = a[@"prio"]   ? [a[@"prio"] intValue]      : 50;
+        d.minW   = a[@"minW"]   ? [a[@"minW"] doubleValue]   : 48;
+        d.maxW   = a[@"maxW"]   ? [a[@"maxW"] doubleValue]   : 0;
+        out[m++] = d;
+    }
+    return m;
 }
 
 // Reverse of tileToken(), plus a few friendly synonyms for voice control.
@@ -122,10 +166,9 @@ TileType tileTypeForToken(NSString *tok) {
     return (TileType)-1;
 }
 
-// Current version of the persisted layout schema. v2: the bare compact BOOL
-// (PBKeyCompact) became the three-state density (PBKeyDensity). Bump when the
-// on-disk shape changes so pb_ensureLayoutSchema can migrate.
-static const NSInteger kLayoutSchemaVersion = 2;
+// Current version of the persisted layout schema. v2: compact BOOL → density.
+// v3: reserves the PBCompose.<mode> namespace (per-mode add/remove); no rewrite.
+static const NSInteger kLayoutSchemaVersion = 3;
 
 void pb_ensureLayoutSchema(void) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
@@ -149,9 +192,9 @@ static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
     int n = *pn, out = 0;
     for (int i = 0; i < n; i++) {
-        // Launcher tiles share one type token, so per-tile size overrides don't
-        // apply to them individually — keep them as-is.
-        if (defs[i].type != TLAUNCH) {
+        // Instanced tiles (launchers, clocks) share one type token, so per-tile
+        // size overrides don't apply to them individually — keep them as-is.
+        if (!pb_isInstanced(defs[i].type)) {
             NSDictionary *o = [ud dictionaryForKey:overrideKey(mode, defs[i].type)];
             if (o) {
                 if ([o[@"hidden"] boolValue]) continue;                   // force-hidden → drop
@@ -170,7 +213,7 @@ static void applyTileOverrides(NSInteger mode, TileDef *defs, int *pn) {
 // display order when a tile has no explicit @"order" override.
 static int naturalIndexForType(NSInteger mode, TileType t) {
     TileDef defs[16];
-    int n = tilesForMode(mode, defs);
+    int n = composedTilesForMode(mode, defs);
     for (int i = 0; i < n; i++) if (defs[i].type == t) return i;
     return 1 << 20;
 }
@@ -181,24 +224,51 @@ static int naturalIndexForType(NSInteger mode, TileType t) {
 static NSInteger effectiveOrderForDef(NSInteger mode, TileDef d) {
     NSDictionary *o = [NSUserDefaults.standardUserDefaults dictionaryForKey:orderKeyForType(mode, d.type, d.arg)];
     if (o && o[@"order"]) return [o[@"order"] integerValue];
-    return (d.type == TLAUNCH) ? d.arg : naturalIndexForType(mode, d.type);
+    return pb_isInstanced(d.type) ? d.arg : naturalIndexForType(mode, d.type);
 }
 
 CGFloat PBRequiredMinContentWidth(NSInteger mode) {
     TileDef defs[16];
-    int n = tilesForMode(mode, defs);
+    int n = composedTilesForMode(mode, defs);
     applyTileOverrides(mode, defs, &n);
     CGFloat sum = 0;
     for (int i = 0; i < n; i++) sum += defs[i].minW;
     return sum;
 }
 
-// Compute which tiles are visible for `mode` at content width `avail`, after
-// overrides + priority-based hiding, compacted left→right into `out`. Returns
-// the visible count. Shared by the renderer and the layout unit test.
+// ---- packVisible cache -----------------------------------------------------
+// packVisible is a pure function of (mode, avail, the persisted layout). It runs
+// every draw — and several times per frame (draw pass, hit-test record pass) — and
+// each call does O(n²) NSUserDefaults reads (overrides + per-comparison order +
+// the composition dict). Memoize on EXACT (mode, avail, gen): every call in a
+// frame shares one avail → all but the first hit; steady-state frames reuse last
+// second's entry. gen bumps on any layout write, so the memo is never stale.
+static uint64_t gLayoutGen = 1;
+void pb_bumpLayoutGen(void) { gLayoutGen++; }
+
+typedef struct { BOOL valid; NSInteger mode; CGFloat avail; uint64_t gen; int count; TileDef out[16]; } PackCache;
+static int packCompute(NSInteger mode, CGFloat avail, TileDef *out);
+
 int packVisible(NSInteger mode, CGFloat avail, TileDef *out) {
+    static PackCache cache[12]; static int next = 0;
+    for (int i = 0; i < 12; i++)
+        if (cache[i].valid && cache[i].gen == gLayoutGen && cache[i].mode == mode && cache[i].avail == avail) {
+            memcpy(out, cache[i].out, sizeof(TileDef) * cache[i].count);
+            return cache[i].count;
+        }
+    int m = packCompute(mode, avail, out);
+    PackCache *e = &cache[next++ % 12];
+    e->valid = YES; e->mode = mode; e->avail = avail; e->gen = gLayoutGen; e->count = m;
+    memcpy(e->out, out, sizeof(TileDef) * m);
+    return m;
+}
+
+// Compute which tiles are visible for `mode` at content width `avail`, after
+// composition + overrides + priority-based hiding, compacted left→right into
+// `out`. Returns the visible count.
+static int packCompute(NSInteger mode, CGFloat avail, TileDef *out) {
     TileDef defs[16];
-    int n = tilesForMode(mode, defs);
+    int n = composedTilesForMode(mode, defs);
     applyTileOverrides(mode, defs, &n);
     if (n <= 0) return 0;
 

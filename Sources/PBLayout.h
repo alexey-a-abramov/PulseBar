@@ -48,6 +48,11 @@ int packVisible(NSInteger mode, CGFloat avail, TileDef *out);
 // Stamp the persisted-override schema version on first run (idempotent).
 void pb_ensureLayoutSchema(void);
 
+// Invalidate the packVisible cache. Call after ANY change to the persisted
+// layout (overrides, order, or the per-mode add/remove composition) — the bar
+// observes PBLayoutChangedNotification and calls this.
+void pb_bumpLayoutGen(void);
+
 // Bar density. Auto = passive adaptation: render compact (icon-only pill +
 // icon-only actions) when the content area can't fit the mode's full tile set —
 // i.e. go denser BEFORE the priority system starts hiding tiles.
