@@ -52,6 +52,7 @@
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
     NSMenuItem *_fnItem;
+    NSMenuItem *_collapseTabsItem;
     NSMenu *_densityMenu;
 }
 
@@ -171,6 +172,7 @@
     self.barView.safeAreaRightInset = PBDefaultsInteger(PBKeySafeRight, PBDefaultSafeRight);
     [BarView ensureLayoutSchema];   // migrate the legacy compact bool → density before reading it
     self.barView.density = (PBDensity)PBDefaultsInteger(PBKeyDensity, PBDensityAuto);
+    self.barView.tabsCollapsed = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyTabsCollapsed];
     self.presenter = [[PBTouchBarPresenter alloc] initWithContentView:self.barView];
 }
 
@@ -224,6 +226,10 @@
     [menu addItem:density];
     _densityMenu = densitySub;
 
+    _collapseTabsItem = [menu addItemWithTitle:@"Collapse Mode Tabs" action:@selector(toggleTabsCollapsed:) keyEquivalent:@""];
+    _collapseTabsItem.target = self;
+    _collapseTabsItem.state = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyTabsCollapsed] ? NSControlStateValueOn : NSControlStateValueOff;
+
     _fnItem = [menu addItemWithTitle:@"Modifier Shortcuts  (⌃ peek · ⌥ app)" action:@selector(toggleModifiers) keyEquivalent:@""];
 
     // Diagnostics submenu (mirror · re-take · log)
@@ -268,6 +274,7 @@
         self.mirror.bar.safeAreaLeftInset  = self.barView.safeAreaLeftInset;
         self.mirror.bar.safeAreaRightInset = self.barView.safeAreaRightInset;
         self.mirror.bar.density = self.barView.density;
+        self.mirror.bar.tabsCollapsed = self.barView.tabsCollapsed;
     }
     [self.mirror show];
 }
@@ -281,6 +288,16 @@
     [NSUserDefaults.standardUserDefaults setInteger:d forKey:PBKeyDensity];
     [self syncDensityMenu];
 }
+
+// Collapse/expand the mode-tab strip (chevron on the bar, the menu item, or
+// Settings → Layout). Applies to both bars, persists, keeps the menu check in sync.
+- (void)setTabsCollapsed:(BOOL)c {
+    [self broadcast:^(BarView *b){ b.tabsCollapsed = c; }];
+    [NSUserDefaults.standardUserDefaults setBool:c forKey:PBKeyTabsCollapsed];
+    _collapseTabsItem.state = c ? NSControlStateValueOn : NSControlStateValueOff;
+}
+- (void)barSetTabsCollapsed:(BOOL)c { [self setTabsCollapsed:c]; }   // chevron tapped on the bar
+- (void)toggleTabsCollapsed:(id)sender { [self setTabsCollapsed:!self.barView.tabsCollapsed]; }
 
 #pragma mark - Touch Bar attach / detach
 
@@ -632,6 +649,8 @@
 }
 - (NSInteger)settingsDensity { return self.barView.density; }
 - (void)settingsSetDensity:(NSInteger)d { [self setDensity:(PBDensity)d]; }
+- (BOOL)settingsTabsCollapsed { return self.barView.tabsCollapsed; }
+- (void)settingsSetTabsCollapsed:(BOOL)c { [self setTabsCollapsed:c]; }
 - (NSString *)settingsAgentModel { return PBDefaultsString(PBKeyAgentModel, @"gemma3:4b"); }
 - (void)settingsSetAgentModel:(NSString *)tag {
     if (!tag.length) return;

@@ -29,6 +29,7 @@ static const CGFloat kTabActiveFull    = 86;   // active pill, icon + label
 static const CGFloat kTabActiveCompact = 38;   // active pill, icon only
 static const CGFloat kTabInactive      = 30;
 static const CGFloat kTabGap           = 2;
+static const CGFloat kChevW            = 20;   // collapse/expand chevron tab
 // Auto only *exits* compact once this much width is back (asymmetric hysteresis
 // so frame jitter near the threshold can't flip the density every frame).
 static const CGFloat kDensityExitSlack = 24;
@@ -126,6 +127,7 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     NSInteger   _peekSavedMode, _peekSavedPrev; // mode/recent to restore when the peek ends
     double      _anim;            // 1 = settled
     CGFloat     _tabW[BarModeCount];
+    NSRect      _tabToggleRect;   // chevron hit target (collapse/expand the tab strip)
     NSTimer    *_animTimer;
 
     NSInteger   _view[40];        // per-metric alternate-view index (tap to cycle); 0 = default
@@ -199,6 +201,7 @@ static int viewCount(TileType t) {
 // CPU's view doubles as the legacy "show cores" toggle (used by the menu item).
 - (BOOL)showCores { return _view[TCPU] != 0; }
 - (void)setShowCores:(BOOL)v { _view[TCPU] = v ? 1 : 0; [self setNeedsDisplay:YES]; }
+- (void)setTabsCollapsed:(BOOL)c { _tabsCollapsed = c; [self setNeedsDisplay:YES]; }
 
 - (instancetype)initWithFrame:(NSRect)f {
     if ((self = [super initWithFrame:f])) {
@@ -671,6 +674,16 @@ static int viewCount(TileType t) {
     }
 }
 
+// The collapse/expand chevron that sits in the tab strip. › when collapsed
+// (tap to reveal all modes), ‹ when expanded (tap to collapse to the active pill).
+- (void)drawTabChevron:(NSRect)r collapsed:(BOOL)collapsed {
+    NSRect pill = NSInsetRect(r, 1, 3);
+    [[NSColor colorWithCalibratedWhite:1 alpha:0.07] setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6] fill];
+    [self symbol:collapsed ? @"chevron.right" : @"chevron.left"
+              in:r pt:11 color:[NSColor colorWithCalibratedWhite:0.7 alpha:1]];
+}
+
 - (void)drawFnKeys:(NSRect)b {
     CGFloat H = b.size.height, pad = 4, gap = 3;
     CGFloat li = MAX(0, self.safeAreaLeftInset), ri = MAX(0, self.safeAreaRightInset);
@@ -785,13 +798,27 @@ static int viewCount(TileType t) {
     NSRect rAg = NSMakeRect(rx - kAgentW, 0, kAgentW, H); rx -= kAgentW + kClusterGap; [self drawTile:(Tile){TAGENT, rAg, 0}]; [self push:TAGENT rect:rAg arg:0];
     CGFloat rightEdge = rx; [self divider:rightEdge];
 
-    // left tabs (accordion) — start after the left safe inset (the close box zone)
+    // left tabs (accordion) — start after the left safe inset (the close box zone).
+    // Collapsed: only the active pill + a › chevron to expand (reclaims the inactive
+    // tabs' width for content). Expanded: every tab, exactly as before (no chevron —
+    // collapse is triggered from the menu / Settings, so expanded costs no pixels).
     CGFloat tx = li + 4;
-    for (NSInteger m = 0; m < BarModeCount; m++) {
-        NSRect tr = NSMakeRect(tx, 0, _tabW[m], H);
-        [self drawTab:m rect:tr active:(m == _mode)];
-        [self push:TTAB rect:tr arg:m];
-        tx += _tabW[m] + kTabGap;
+    _tabToggleRect = NSZeroRect;
+    if (_tabsCollapsed) {
+        NSRect tr = NSMakeRect(tx, 0, _tabW[_mode], H);
+        [self drawTab:_mode rect:tr active:YES];
+        [self push:TTAB rect:tr arg:_mode];
+        tx += _tabW[_mode] + kTabGap;
+        _tabToggleRect = NSMakeRect(tx, 0, kChevW, H);
+        [self drawTabChevron:_tabToggleRect collapsed:YES];
+        tx += kChevW + kTabGap;
+    } else {
+        for (NSInteger m = 0; m < BarModeCount; m++) {
+            NSRect tr = NSMakeRect(tx, 0, _tabW[m], H);
+            [self drawTab:m rect:tr active:(m == _mode)];
+            [self push:TTAB rect:tr arg:m];
+            tx += _tabW[m] + kTabGap;
+        }
     }
     [self divider:tx + 2];
     _swipeMaxX = tx + 4;   // swipe-to-switch is only recognised left of here (the tab zone)
@@ -831,6 +858,11 @@ static int viewCount(TileType t) {
     _pendingPillTap = NO; _dragType = -1;
     if (self.breakReminder) {   // banner is modal-ish: only the OK button dismisses it
         if (NSPointInRect(p, _breakOKRect)) [self.actionDelegate barAcknowledgeBreak];
+        return;
+    }
+    if (!_arranging && NSPointInRect(p, _tabToggleRect)) {   // chevron → collapse/expand the tab strip
+        self.tabsCollapsed = !_tabsCollapsed;
+        [self.actionDelegate barSetTabsCollapsed:_tabsCollapsed];
         return;
     }
     Tile *t = [self tileAt:p];

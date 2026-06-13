@@ -22,6 +22,7 @@
     NSSlider   *_leftSlider, *_rightSlider;
     NSTextField *_leftVal, *_rightVal;
     NSSegmentedControl *_densitySeg;
+    NSButton   *_collapseTabs;
     NSPopUpButton *_modelPopup, *_downloadPopup;
     NSTextField *_modelStatus, *_dlStatus;
     NSButton   *_downloadBtn;
@@ -140,7 +141,10 @@ static NSTextField *help(NSString *s, NSRect f) {
                                                     trackingMode:NSSegmentSwitchTrackingSelectOne
                                                           target:self action:@selector(densityChanged:)];
     _densitySeg.frame = NSMakeRect(20, top - 54, 240, 24); [c addSubview:_densitySeg];
-    [c addSubview:help(@"Auto goes icon-only before any tile has to be hidden when the bar is tight;\nFull and Compact pin the look.",
+    _collapseTabs = [NSButton checkboxWithTitle:@"Collapse mode tabs (show only the active pill; tap › to expand)"
+                                         target:self action:@selector(collapseTabsChanged:)];
+    _collapseTabs.frame = NSMakeRect(276, top - 52, W - 296, 22); [c addSubview:_collapseTabs];
+    [c addSubview:help(@"Auto goes icon-only before any tile has to be hidden when the bar is tight;\nFull and Compact pin the look. Collapsing the tabs frees their width for tiles.",
                        NSMakeRect(20, top - 90, W - 40, 32))];
 
     // Fit — insets that keep tiles clear of system chrome.
@@ -363,6 +367,7 @@ static NSTextField *help(NSString *s, NSRect f) {
     _leftVal.stringValue  = [NSString stringWithFormat:@"%ld px", (long)lround(sl)];
     _rightVal.stringValue = [NSString stringWithFormat:@"%ld px", (long)lround(sr)];
     _densitySeg.selectedSegment = [_delegate settingsDensity];   // PBDensity ordinals match segment order
+    _collapseTabs.state = [_delegate settingsTabsCollapsed] ? NSControlStateValueOn : NSControlStateValueOff;
     NSInteger atm = [_delegate settingsAgentTimeoutMinutes];
     _agentTimeoutStep.integerValue = atm;
     _agentTimeoutVal.stringValue = atm <= 0 ? @"never" : [NSString stringWithFormat:@"%ld min idle", (long)atm];
@@ -452,6 +457,7 @@ static NSTextField *help(NSString *s, NSRect f) {
     [self changeLeft:_leftSlider]; [self changeRight:_rightSlider];
 }
 - (void)densityChanged:(NSSegmentedControl *)s { [_delegate settingsSetDensity:s.selectedSegment]; }
+- (void)collapseTabsChanged:(NSButton *)b { [_delegate settingsSetTabsCollapsed:(b.state == NSControlStateValueOn)]; }
 - (void)editLayout:(id)s { [_delegate settingsEditLayout]; }
 - (void)doQuit:(id)s { [_delegate settingsQuit]; }
 

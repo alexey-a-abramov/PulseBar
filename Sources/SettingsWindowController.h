@@ -33,6 +33,8 @@
 - (void)settingsSetSafeRight:(CGFloat)px;
 - (NSInteger)settingsDensity;             // PBDensity: 0 Auto · 1 Full · 2 Compact
 - (void)settingsSetDensity:(NSInteger)d;
+- (BOOL)settingsTabsCollapsed;            // collapse the mode-tab strip to the active pill
+- (void)settingsSetTabsCollapsed:(BOOL)collapsed;
 // Agent
 - (NSString *)settingsAgentModel;
 - (void)settingsSetAgentModel:(NSString *)tag;

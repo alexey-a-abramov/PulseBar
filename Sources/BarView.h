@@ -42,6 +42,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 - (void)barNoteUp;                // released — stop + save the side note
 - (void)barAcknowledgeBreak;      // OK pressed on the take-a-break banner
 - (void)barDidChangeMode:(NSInteger)mode;
+- (void)barSetTabsCollapsed:(BOOL)collapsed;   // chevron on the tab strip toggled collapse
 - (void)barSendFunctionKey:(NSInteger)n;   // n = 1..12 (legacy)
 - (void)barAppAction:(NSString *)action;   // "hide" | "quit" the frontmost app
 @end
@@ -64,6 +65,7 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic) double uptime;           // seconds since boot (System mode)
 @property (nonatomic) double sessionSeconds;   // length of the current active working session
 @property (nonatomic) PBThermalSample thermal; // CPU temp + fan (TTEMP tile)
+@property (nonatomic) BOOL   tabsCollapsed;     // collapse the tab strip to the active pill (+ a chevron to expand)
 @property (nonatomic) BOOL   noteRecording;    // Focus side-note tile is capturing (turns red)
 @property (nonatomic) BOOL   breakReminder;    // ⌃-unmutable "take a break" banner is showing
 @property (nonatomic, copy)   NSString *breakReminderText;  // e.g. "1h 26m" — session length shown in the banner

@@ -98,6 +98,10 @@ window:
 Other shortcuts: hold **⌃** to peek your previous mode (release to snap back); **long-press
 the active mode pill** to enter *arrange mode* and drag tiles left/right to reorder them.
 
+**Collapse the mode tabs** (menu bar → *Collapse Mode Tabs*, or Settings → Layout) to show only
+the active mode pill and reclaim the other tabs' width for tiles; tap the **›** chevron on the bar
+to expand again.
+
 ### Customize layout (add / remove widgets)
 **Settings → Layout → Customize layout…** (or the menu bar) opens a per-mode editor. Pick a
 mode and: drag **Size/Min** to resize a tile, toggle **Show** to hide it, lower **Priority** so it

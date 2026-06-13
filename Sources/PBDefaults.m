@@ -17,6 +17,7 @@ NSString * const PBKeySafeLeft    = @"safeAreaLeft";
 NSString * const PBKeySafeRight   = @"safeAreaRight";
 NSString * const PBKeyCompact     = @"compactLayout";
 NSString * const PBKeyDensity     = @"density";
+NSString * const PBKeyTabsCollapsed = @"tabsCollapsed";
 NSString * const PBKeyAgentSessionTimeout = @"agentSessionTimeoutMin";
 NSString * const PBKeyAgentModel  = @"agentModel";
 
