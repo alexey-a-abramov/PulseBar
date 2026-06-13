@@ -374,6 +374,13 @@ static int viewCount(TileType t) {
 
 #pragma mark - tiles
 
+// The active-working-session chip — shared by the dedicated Focus tile and the
+// uptime tile's tap-view (one drawing, no copy-paste drift).
+- (void)drawSessionChip:(NSRect)r {
+    [self label:@"SESSION" in:r];
+    [self t:PBFmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
+}
+
 - (void)drawTile:(Tile)tile {
     NSRect r = tile.rect;
     [NSGraphicsContext saveGraphicsState];
@@ -528,14 +535,12 @@ static int viewCount(TileType t) {
                 [self label:@"UPTIME" in:r];
                 [self t:PBFmtUptime(self.uptime) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self accent]];
             } else {
-                [self label:@"SESSION" in:r];
-                [self t:PBFmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
+                [self drawSessionChip:r];
             }
             break; }
-        case TSESSION: {   // dedicated active-working-session chip (e.g. for Focus mode)
-            [self label:@"SESSION" in:r];
-            [self t:PBFmtUptime(self.sessionSeconds) at:NSMakePoint(r.origin.x + 6, 13) sz:13 w:NSFontWeightBold c:[self green]];
-            break; }
+        case TSESSION:   // dedicated active-working-session chip (e.g. for Focus mode)
+            [self drawSessionChip:r];
+            break;
         case TNOTE: {   // hold to record a voice side-note (walkie-talkie)
             BOOL rec = self.noteRecording;
             [self action:rec ? @"waveform" : @"mic.fill" label:rec ? @"REC…" : @"NOTE" in:r active:rec color:[self pink]];

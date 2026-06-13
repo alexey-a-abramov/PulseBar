@@ -18,7 +18,7 @@ the panel cross-fades, and your choice is remembered:
 |------|----------|
 | **System**  | CPU · MEM · GPU · NET · DISK · uptime/session · battery |
 | **Media**   | now-playing transport (◀ ⏯ ▶) · scrubber (tap to seek) · volume |
-| **Focus**   | adaptive Pomodoro · **session** · ☕ caffeine · New Note · Lock |
+| **Focus**   | adaptive Pomodoro · **session** · voice side-note (hold to talk) · ☕ caffeine · Reminder · Lock |
 | **Classic** | brightness · volume · media (the Control-Strip basics) |
 | **Actions** | colourful app launcher (Arc · Termius · Zed · Claude · Claude Code · Dynalist) · Screenshot · Lock |
 
