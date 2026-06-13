@@ -56,6 +56,24 @@ void pb_ensureLayoutSchema(void);
 // observes PBLayoutChangedNotification and calls this.
 void pb_bumpLayoutGen(void);
 
+// ---- per-mode composition (layout-editor add/remove) ----------------------
+// The composed, display-ordered tile set for the editor. Each dict:
+//   @"type"(TileType) @"arg"(int) @"name"(base tile name) @"added"(BOOL)
+//   @"instanced"(BOOL) @"hidden"(BOOL) @"weight" @"prio" @"minW"  — effective spec.
+NSArray<NSDictionary *> *pb_composedRowsForMode(NSInteger mode);
+
+// Add a tile instance to a mode (spec defaulted by type). If (type,arg) is a
+// built-in that was removed, un-remove it; if a force-hidden built-in, un-hide
+// it; else append to the mode's `added` list. Returns NO if already live.
+BOOL pb_composeAdd(NSInteger mode, TileType type, int arg);
+
+// Remove a tile instance: drop it from `added` if it was added, else mark the
+// built-in `removed`. Clears an instanced tile's per-instance order key.
+void pb_composeRemove(NSInteger mode, TileType type, int arg);
+
+// Reset a mode's composition to its built-in default (drops the PBCompose key).
+void pb_composeReset(NSInteger mode);
+
 // Bar density. Auto = passive adaptation: render compact (icon-only pill +
 // icon-only actions) when the content area can't fit the mode's full tile set —
 // i.e. go denser BEFORE the priority system starts hiding tiles.

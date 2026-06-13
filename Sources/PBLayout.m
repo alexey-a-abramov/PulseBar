@@ -155,6 +155,133 @@ static int composedTilesForMode(NSInteger mode, TileDef *out) {
     return m;
 }
 
+// ---- composition mutators (layout-editor add/remove) ----------------------
+
+// Sensible default spec for a freshly added tile, keyed by type.
+static void defaultAddSpec(TileType t, double *w, int *p, double *mn, double *mx) {
+    *w = 0.8; *p = 50; *mn = 56; *mx = 0;
+    switch (t) {
+        case TWCLOCK: *w = 0.7; *p = 50; *mn = 54; *mx = 88; break;
+        case TLAUNCH: *w = 0;   *p = 55; *mn = 44; *mx = 0;  break;
+        case TTEMP:   *w = 0.7; *p = 55; *mn = 56; *mx = 92; break;
+        case TBATT:   *w = 0.3; *p = 60; *mn = 40; *mx = 46; break;
+        case TVOL: case TBRIGHT: *w = 1.2; *p = 60; *mn = 80; *mx = 0; break;
+        case TMEDIA:  *w = 2.0; *p = 60; *mn = 120; *mx = 0; break;
+        default: break;
+    }
+}
+
+static NSMutableDictionary *composeMut(NSInteger mode) {
+    NSDictionary *c = [NSUserDefaults.standardUserDefaults dictionaryForKey:composeKey(mode)];
+    return [c isKindOfClass:NSDictionary.class] ? [c mutableCopy] : [NSMutableDictionary dictionary];
+}
+static void composeWrite(NSInteger mode, NSMutableDictionary *c) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSArray *rm = c[@"removed"], *ad = c[@"added"];
+    if ((rm.count == 0) && (ad.count == 0)) [ud removeObjectForKey:composeKey(mode)];
+    else [ud setObject:c forKey:composeKey(mode)];
+    pb_bumpLayoutGen();
+}
+// Is (type,arg) part of the mode's built-in seed?
+static BOOL isSeedInstance(NSInteger mode, TileType type, int arg) {
+    TileDef seed[16]; int n = tilesForMode(mode, seed);
+    for (int i = 0; i < n; i++)
+        if (seed[i].type == type && (!pb_isInstanced(type) || seed[i].arg == arg)) return YES;
+    return NO;
+}
+
+BOOL pb_composeAdd(NSInteger mode, TileType type, int arg) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    // Already in the composed set?
+    TileDef cur[16]; int n = composedTilesForMode(mode, cur);
+    for (int i = 0; i < n; i++)
+        if (cur[i].type == type && (!pb_isInstanced(type) || cur[i].arg == arg)) {
+            // A force-hidden built-in: un-hide rather than duplicate.
+            if (!pb_isInstanced(type)) {
+                NSString *k = overrideKey(mode, type);
+                NSMutableDictionary *o = [([ud dictionaryForKey:k] ?: @{}) mutableCopy];
+                if ([o[@"hidden"] boolValue]) { o[@"hidden"] = @NO; [ud setObject:o forKey:k]; pb_bumpLayoutGen(); return YES; }
+            }
+            return NO;
+        }
+    NSMutableDictionary *c = composeMut(mode);
+    NSString *ik = instanceKey(type, arg);
+    // Un-remove a built-in that the user had taken out.
+    NSMutableArray *removed = [c[@"removed"] mutableCopy] ?: [NSMutableArray array];
+    if (isSeedInstance(mode, type, arg) && [removed containsObject:ik]) {
+        [removed removeObject:ik]; c[@"removed"] = removed; composeWrite(mode, c); return YES;
+    }
+    // Otherwise append a new instance to `added`.
+    double w, mn, mx; int p; defaultAddSpec(type, &w, &p, &mn, &mx);
+    NSMutableArray *added = [c[@"added"] mutableCopy] ?: [NSMutableArray array];
+    [added addObject:@{ @"token": tileToken(type), @"arg": @(arg),
+                        @"weight": @(w), @"prio": @(p), @"minW": @(mn), @"maxW": @(mx) }];
+    c[@"added"] = added; composeWrite(mode, c); return YES;
+}
+
+void pb_composeRemove(NSInteger mode, TileType type, int arg) {
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSMutableDictionary *c = composeMut(mode);
+    NSMutableArray *added = [c[@"added"] mutableCopy] ?: [NSMutableArray array];
+    BOOL wasAdded = NO;
+    for (NSInteger i = (NSInteger)added.count - 1; i >= 0; i--) {
+        NSDictionary *a = added[i];
+        if (tileTypeForToken(a[@"token"]) == type && (!pb_isInstanced(type) || [a[@"arg"] intValue] == arg)) {
+            [added removeObjectAtIndex:i]; wasAdded = YES;
+        }
+    }
+    if (wasAdded) c[@"added"] = added;
+    else if (isSeedInstance(mode, type, arg)) {                       // built-in → mark removed
+        NSMutableArray *removed = [c[@"removed"] mutableCopy] ?: [NSMutableArray array];
+        NSString *ik = instanceKey(type, arg);
+        if (![removed containsObject:ik]) [removed addObject:ik];
+        c[@"removed"] = removed;
+    }
+    if (pb_isInstanced(type)) [ud removeObjectForKey:orderKeyForType(mode, type, arg)];   // clear stale per-instance order
+    composeWrite(mode, c);
+}
+
+void pb_composeReset(NSInteger mode) {
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:composeKey(mode)];
+    pb_bumpLayoutGen();
+}
+
+// Composed, display-ordered rows for the layout editor.
+static NSInteger effectiveOrderForDef(NSInteger mode, TileDef d);   // defined below
+NSArray<NSDictionary *> *pb_composedRowsForMode(NSInteger mode) {
+    TileDef defs[16];
+    int n = composedTilesForMode(mode, defs);
+    // Insertion-sort by effective display order, matching the renderer (n ≤ 16).
+    for (int i = 1; i < n; i++) {
+        TileDef key = defs[i]; NSInteger ko = effectiveOrderForDef(mode, key);
+        int j = i - 1;
+        while (j >= 0 && effectiveOrderForDef(mode, defs[j]) > ko) { defs[j + 1] = defs[j]; j--; }
+        defs[j + 1] = key;
+    }
+    // Built-in instanceKeys → flag which rows are user-added.
+    TileDef seed[16]; int sn = tilesForMode(mode, seed);
+    NSMutableSet *seedKeys = [NSMutableSet set];
+    for (int i = 0; i < sn; i++) [seedKeys addObject:instanceKey(seed[i].type, seed[i].arg)];
+
+    NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
+    NSMutableArray *rows = [NSMutableArray arrayWithCapacity:n];
+    for (int i = 0; i < n; i++) {
+        TileType t = defs[i].type; int arg = defs[i].arg;
+        BOOL inst = pb_isInstanced(t);
+        NSDictionary *o = inst ? nil : [ud dictionaryForKey:overrideKey(mode, t)];
+        [rows addObject:@{
+            @"type": @(t), @"arg": @(arg), @"name": tileName(t),
+            @"instanced": @(inst),
+            @"added": @(![seedKeys containsObject:instanceKey(t, arg)]),
+            @"hidden": @([o[@"hidden"] boolValue]),
+            @"weight": @(o[@"w"]    ? [o[@"w"] doubleValue]    : defs[i].weight),
+            @"prio":   @(o[@"prio"] ? [o[@"prio"] doubleValue] : defs[i].prio),
+            @"minW":   @(o[@"minW"] ? [o[@"minW"] doubleValue] : defs[i].minW),
+        }];
+    }
+    return rows;
+}
+
 // Reverse of tileToken(), plus a few friendly synonyms for voice control.
 // Returns -1 if the token names no tile.
 TileType tileTypeForToken(NSString *tok) {

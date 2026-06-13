@@ -98,6 +98,14 @@ window:
 Other shortcuts: hold **⌃** to peek your previous mode (release to snap back); **long-press
 the active mode pill** to enter *arrange mode* and drag tiles left/right to reorder them.
 
+### Customize layout (add / remove widgets)
+**Settings → Layout → Customize layout…** (or the menu bar) opens a per-mode editor. Pick a
+mode and: drag **Size/Min** to resize a tile, toggle **Show** to hide it, lower **Priority** so it
+drops first when space is tight, **▲/▼** to reorder, **✕** to remove. **Add tile…** adds a
+**World Clock** (any city from the master list — DST-correct), an **App Launcher**, or any other
+tile — and the same tile can live in several modes. Changes are per-mode and reversible
+(**Reset this mode**). The layout engine caches packing so none of this costs a frame.
+
 Some Actions prompt for permission the first time (Screenshot → Screen Recording,
 Dark Mode → Automation); macOS will ask once.
 
@@ -149,7 +157,7 @@ Sources/
   AppIndex.m · Queries.m    fuzzy app launcher · read-only spoken status answers
   VoiceNotes.m              Focus side-notes: walkie-talkie capture → notes.jsonl / CSV
   SettingsWindowController.m  sectioned settings window (General · Fit · Focus · Notes)
-  LayoutEditorWindowController.m  size editor (per-tile size/priority/visibility)
+  LayoutEditorWindowController.m  layout editor: per-tile size/priority/visibility/order + add/remove (world clocks, apps, any tile)
   PBDefaults.m              NSUserDefaults key constants
   PreviewData.m             canned sample telemetry for previews/harnesses
   PrivateAPI.h              Touch Bar SPI declarations
