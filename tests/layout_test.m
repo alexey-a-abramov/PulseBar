@@ -5,6 +5,7 @@
 //
 #import <AppKit/AppKit.h>
 #import "../Sources/BarView.h"
+#import "../Sources/PBDefaults.h"
 
 static int failures = 0;
 #define CHECK(cond, msg) do { \
@@ -78,6 +79,31 @@ int main(void) { @autoreleasepool {
 
     NSArray *reset = [BarView visibleTileNamesForMode:BarModeSystem contentWidth:700];
     CHECK(eq(reset, full, "reset"), "removing the order override restores natural order");
+
+    // ---- Auto-density predicate (pure; no overrides set at this point) ----
+    BOOL anyCompactAtDefault = NO;
+    for (NSInteger m = 0; m < BarModeCount; m++)
+        anyCompactAtDefault |= [BarView effectiveCompactForMode:m density:PBDensityAuto width:1004 left:0 right:110];
+    CHECK(!anyCompactAtDefault, "Auto stays full for every mode at the default fit (1004 / 0 / 110)");
+    CHECK([BarView effectiveCompactForMode:BarModeSystem density:PBDensityAuto width:640 left:0 right:110],
+          "Auto goes compact for System at a tight width (640 / 0 / 110)");
+    CHECK(![BarView effectiveCompactForMode:BarModeSystem density:PBDensityFull width:360 left:0 right:110],
+          "Full never goes compact, even at 360");
+    CHECK([BarView effectiveCompactForMode:BarModeSystem density:PBDensityCompact width:1004 left:0 right:0],
+          "Compact is always compact, even with maximum space");
+    BOOL a1 = [BarView effectiveCompactForMode:BarModeSystem density:PBDensityAuto width:640 left:0 right:110];
+    BOOL a2 = [BarView effectiveCompactForMode:BarModeSystem density:PBDensityAuto width:640 left:0 right:110];
+    CHECK(a1 == a2, "predicate is deterministic (same inputs, same answer)");
+
+    // ---- v1→v2 schema migration: legacy compact bool → density ----
+    void (^resetSchema)(void) = ^{ [ud removeObjectForKey:PBKeyDensity]; [ud removeObjectForKey:PBKeyLayoutSchemaVersion]; };
+    resetSchema(); [ud setBool:YES forKey:PBKeyCompact]; [BarView ensureLayoutSchema];
+    CHECK([ud integerForKey:PBKeyDensity] == PBDensityCompact, "migration: compact=YES → density Compact");
+    resetSchema(); [ud setBool:NO forKey:PBKeyCompact]; [BarView ensureLayoutSchema];
+    CHECK([ud integerForKey:PBKeyDensity] == PBDensityFull, "migration: explicit compact=NO → density Full");
+    resetSchema(); [ud removeObjectForKey:PBKeyCompact]; [BarView ensureLayoutSchema];
+    CHECK([ud objectForKey:PBKeyDensity] == nil, "migration: untouched compact → density unset (reads as Auto)");
+    [ud removeObjectForKey:PBKeyCompact];   // cleanup
 
     printf("\n%s — %d failure(s)\n", failures ? "FAILED" : "ALL TESTS PASSED", failures);
     return failures ? 1 : 0;

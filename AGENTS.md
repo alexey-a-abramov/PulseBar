@@ -115,8 +115,8 @@ Sources/
   Queries.m                  read-only spoken status answers (battery/cpu/…)
   VoiceNotes.m               Focus side-notes: walkie-talkie capture → notes.jsonl + CSV export
   AgentWindowController.m    chat window: bubbles, quick chips, voice capture
-  SettingsWindowController.m sectioned settings window — tabs: General, Fit (safe-area
-                             squeeze + compact), Focus (pomodoro + break reminder), Notes (history)
+  SettingsWindowController.m sectioned settings window — tabs: General, Layout (density + safe-area
+                             squeeze + fit presets), Focus (pomodoro + break reminder), Agent (model + session), Notes (history)
   LayoutEditorWindowController.m  size editor: per-tile size/priority/visibility + preview
   PBDefaults.m               NSUserDefaults key constants (single source of truth)
   PreviewData.m              canned sample telemetry for the editor preview + harnesses
@@ -163,7 +163,7 @@ Pock/MTMR/BetterTouchTool, all resolved/guarded at runtime:
   flickered); app switches just quietly re-suppress the ✕.
 - **Fit around residual chrome**: where the ✕ still shifts the bar or the strip
   overlaps, `BarView.safeAreaLeftInset`/`safeAreaRightInset` reserve px so tiles &
-  the agent orb stay clear (Settings → Fit, keys `PBKeySafeLeft`/`PBKeySafeRight`;
+  the agent orb stay clear (Settings → Layout, keys `PBKeySafeLeft`/`PBKeySafeRight`;
   defaults 0 / 110). The orb lives outside the packed set so it's always drawn.
 - Other SPI: `DisplayServices` (brightness), `MediaRemote` (media), CoreAudio (volume).
 
@@ -177,10 +177,13 @@ Pock/MTMR/BetterTouchTool, all resolved/guarded at runtime:
 tap to switch (synced to the mirror via `barDidChangeMode:`). The Classic tab uses
 the `apple.logo` symbol.
 
-**Compact layout** (`BarView.compactLayout`, `PBKeyCompact`, menu + Settings → Fit):
-the active pill drops its text label (icon-only, narrower) and `drawTile:`'s
-`action:` tiles render icon-only — denser, for tight bars. Rendering-only; the
-visible set / packing is unchanged.
+**Density** (`BarView.density`, `PBKeyDensity`, menu Density submenu + Settings →
+Layout): Full, Compact (icon-only pill + icon-only action tiles), or **Auto** —
+the default — which goes compact per mode only when the content area can't fit
+that mode's full tile set (denser BEFORE the priority system hides tiles; the
+predicate is `+effectiveCompactForMode:…`, unit-tested, computed from full-density
+tab widths so it can't oscillate). Rendering-only; the visible set is unchanged.
+The legacy `PBKeyCompact` bool migrates to density via layout-schema v2.
 
 **Drag-to-arrange**: long-press the active pill → arrange mode (amber dashed frame
 + ⟷ pill); drag a tile left/right to reorder, tap the pill to finish. Persists via

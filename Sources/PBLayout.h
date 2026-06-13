@@ -47,3 +47,13 @@ void setOrderOverride(NSInteger mode, TileType t, int arg, NSInteger order);
 int packVisible(NSInteger mode, CGFloat avail, TileDef *out);
 // Stamp the persisted-override schema version on first run (idempotent).
 void pb_ensureLayoutSchema(void);
+
+// Bar density. Auto = passive adaptation: render compact (icon-only pill +
+// icon-only actions) when the content area can't fit the mode's full tile set —
+// i.e. go denser BEFORE the priority system starts hiding tiles.
+typedef NS_ENUM(NSInteger, PBDensity) { PBDensityAuto = 0, PBDensityFull = 1, PBDensityCompact = 2 };
+
+// Width the mode needs to show EVERY tile at its full minW (overrides applied,
+// no priority hiding). The Auto-density predicate compares this to the space left
+// after the insets/tabs/cluster.
+CGFloat PBRequiredMinContentWidth(NSInteger mode);

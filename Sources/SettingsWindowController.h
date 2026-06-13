@@ -31,8 +31,8 @@
 - (void)settingsSetSafeLeft:(CGFloat)px;
 - (CGFloat)settingsSafeRight;
 - (void)settingsSetSafeRight:(CGFloat)px;
-- (BOOL)settingsCompact;
-- (void)settingsSetCompact:(BOOL)on;
+- (NSInteger)settingsDensity;             // PBDensity: 0 Auto · 1 Full · 2 Compact
+- (void)settingsSetDensity:(NSInteger)d;
 // Agent
 - (NSString *)settingsAgentModel;
 - (void)settingsSetAgentModel:(NSString *)tag;

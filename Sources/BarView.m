@@ -21,6 +21,17 @@ static const CGFloat kClusterPad = 4;    // trailing padding before the cluster
 static const CGFloat kAgentW     = 32;
 static const CGFloat kClusterGap = 2;    // gap between adjacent cluster controls
 
+// Accordion tab geometry — shared by tabTarget:, the drawRect tab loop and the
+// Auto-density predicate, so the "space left for content" math can't drift from
+// what is actually drawn.
+static const CGFloat kTabActiveFull    = 86;   // active pill, icon + label
+static const CGFloat kTabActiveCompact = 38;   // active pill, icon only
+static const CGFloat kTabInactive      = 30;
+static const CGFloat kTabGap           = 2;
+// Auto only *exits* compact once this much width is back (asymmetric hysteresis
+// so frame jitter near the threshold can't flip the density every frame).
+static const CGFloat kDensityExitSlack = 24;
+
 typedef struct { TileType type; NSRect rect; NSInteger arg; } Tile;
 
 static NSString *modeIcon(NSInteger m) {
@@ -108,7 +119,8 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     NSMutableArray<NSNumber *> *_cpuHist, *_netHist, *_gpuHist;
 
     NSInteger   _mode, _prevMode;
-    BOOL        _compactLayout;                 // icon-only pill + icon-only actions
+    PBDensity   _density;                       // Auto / Full / Compact (user choice)
+    BOOL        _effectiveCompact;              // what's actually rendered this frame
     BOOL        _peeking;                       // ⌃ momentary peek of the previous mode in progress
     NSInteger   _peekSavedMode, _peekSavedPrev; // mode/recent to restore when the peek ends
     double      _anim;            // 1 = settled
@@ -139,12 +151,44 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
 - (BOOL)isFlipped { return YES; }
 - (NSInteger)mode { return _mode; }
 - (NSInteger)recentMode { return _prevMode; }
-- (BOOL)compactLayout { return _compactLayout; }
-- (void)setCompactLayout:(BOOL)c {
-    if (_compactLayout == c) return;
-    _compactLayout = c;
-    for (NSInteger i = 0; i < BarModeCount; i++) _tabW[i] = [self tabTarget:i];   // active pill shrinks/grows
+- (PBDensity)density { return _density; }
+- (void)setDensity:(PBDensity)d {
+    if (_density == d) return;
+    _density = d;
+    [self recomputeDensity];
     [self setNeedsDisplay:YES];
+}
+// Legacy shim (old callers/tests): reads the effective state; writing maps to a fixed density.
+- (BOOL)compactLayout { return _effectiveCompact; }
+- (void)setCompactLayout:(BOOL)c { self.density = c ? PBDensityCompact : PBDensityFull; }
+
+// Pure Auto predicate. avail is computed from the FULL-density pill width
+// unconditionally — the decision must not depend on its own output.
++ (BOOL)effectiveCompactForMode:(NSInteger)mode density:(PBDensity)density
+                          width:(CGFloat)width left:(CGFloat)li right:(CGFloat)ri {
+    if (density == PBDensityFull)    return NO;
+    if (density == PBDensityCompact) return YES;
+    CGFloat tabs = kTabActiveFull + (BarModeCount - 1) * kTabInactive + BarModeCount * kTabGap;
+    CGFloat avail = width - MAX(0, li) - MAX(0, ri) - (kClusterPad + kAgentW + kClusterGap) - (4 + tabs + 4 + 4 + 8);
+    return PBRequiredMinContentWidth(mode) > avail;
+}
+
+// Re-evaluate the rendered density (cheap; called per frame from drawRect).
+// Hysteresis: in Auto, once compact, only return to full when there's clear
+// surplus — so width jitter at the threshold can't flip-flop the layout.
+- (void)recomputeDensity {
+    BOOL want = [BarView effectiveCompactForMode:_mode density:_density
+                                           width:self.bounds.size.width
+                                            left:self.safeAreaLeftInset right:self.safeAreaRightInset];
+    if (_density == PBDensityAuto && _effectiveCompact && !want) {
+        BOOL stillTight = [BarView effectiveCompactForMode:_mode density:PBDensityAuto
+                                                     width:self.bounds.size.width - kDensityExitSlack
+                                                      left:self.safeAreaLeftInset right:self.safeAreaRightInset];
+        if (stillTight) want = YES;   // not enough surplus yet — stay compact
+    }
+    if (want == _effectiveCompact) return;
+    _effectiveCompact = want;
+    for (NSInteger i = 0; i < BarModeCount; i++) _tabW[i] = [self tabTarget:i];   // active pill shrinks/grows
 }
 
 // How many alternate views each metric tile cycles through (tap to switch).
@@ -205,7 +249,7 @@ static int viewCount(TileType t) {
 
 #pragma mark - mode switching (accordion)
 
-- (CGFloat)tabTarget:(NSInteger)m { return (m == _mode) ? (_compactLayout ? 38 : 86) : 30; }
+- (CGFloat)tabTarget:(NSInteger)m { return (m == _mode) ? (_effectiveCompact ? kTabActiveCompact : kTabActiveFull) : kTabInactive; }
 
 - (void)setMode:(NSInteger)mode animated:(BOOL)animated {
     if (mode < 0 || mode >= BarModeCount || mode == _mode) return;
@@ -318,7 +362,7 @@ static int viewCount(TileType t) {
 
 - (void)action:(NSString *)sym label:(NSString *)lab in:(NSRect)r active:(BOOL)active color:(NSColor *)c {
     if (active) { [[c colorWithAlphaComponent:0.18] setFill]; [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 3, 3) xRadius:5 yRadius:5] fill]; }
-    if (_compactLayout) {   // icon-only — no caption (keeps the tile narrow & uncluttered)
+    if (_effectiveCompact) {   // icon-only — no caption (keeps the tile narrow & uncluttered)
         [self symbol:sym in:r pt:15 color:active ? c : [NSColor colorWithCalibratedWhite:0.92 alpha:1]];
         return;
     }
@@ -572,7 +616,7 @@ static int viewCount(TileType t) {
             NSColor *ac = [NSColor colorWithSRGBRed:1.0 green:0.62 blue:0.20 alpha:1];
             NSBezierPath *ring = [NSBezierPath bezierPathWithRoundedRect:pill xRadius:6 yRadius:6];
             ring.lineWidth = 1.5; [ac setStroke]; [ring stroke];
-        } else if (_compactLayout) {   // compact: highlight + icon only, no text label
+        } else if (_effectiveCompact) {   // compact: highlight + icon only, no text label
             [self symbol:modeIcon(m) in:r pt:13 color:ink];
         } else {
             [self symbol:modeIcon(m) in:NSMakeRect(r.origin.x + 5, 0, 16, r.size.height) pt:12 color:ink];
@@ -682,6 +726,10 @@ static int viewCount(TileType t) {
     if (self.breakReminder) { [self drawBreakReminder:b]; return; }   // unmutable session-length nudge
     [[[self load:_cpu] colorWithAlphaComponent:0.10] setFill]; NSRectFill(NSMakeRect(0, H - 1.5, W, 1.5));
 
+    // Re-evaluate Auto density first — the tab widths and tile rendering below
+    // depend on the effective compactness for THIS frame.
+    [self recomputeDensity];
+
     // Safe area: reserve the left/right insets for system chrome (close box, right
     // panel) so nothing important is ever covered and the layout doesn't shift as
     // that chrome comes and goes. Faint hairlines mark the boundaries.
@@ -701,7 +749,7 @@ static int viewCount(TileType t) {
         NSRect tr = NSMakeRect(tx, 0, _tabW[m], H);
         [self drawTab:m rect:tr active:(m == _mode)];
         [self push:TTAB rect:tr arg:m];
-        tx += _tabW[m] + 2;
+        tx += _tabW[m] + kTabGap;
     }
     [self divider:tx + 2];
     _swipeMaxX = tx + 4;   // swipe-to-switch is only recognised left of here (the tab zone)

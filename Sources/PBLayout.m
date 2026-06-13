@@ -122,18 +122,21 @@ TileType tileTypeForToken(NSString *tok) {
     return (TileType)-1;
 }
 
-// Current version of the persisted per-tile override schema (the {hidden, w,
-// prio, order, minW} dicts under overrideKey()). Bump when the on-disk shape
-// changes so a future pb_ensureLayoutSchema can migrate old dicts.
-static const NSInteger kLayoutSchemaVersion = 1;
+// Current version of the persisted layout schema. v2: the bare compact BOOL
+// (PBKeyCompact) became the three-state density (PBKeyDensity). Bump when the
+// on-disk shape changes so pb_ensureLayoutSchema can migrate.
+static const NSInteger kLayoutSchemaVersion = 2;
 
 void pb_ensureLayoutSchema(void) {
-    // Per-tile override dicts (see overrideKey()) are versioned so future shape
-    // changes can be migrated. First run with no version recorded: stamp the
-    // current one. (No migrations exist yet at v1, so this is behaviour-neutral.)
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;
-    if ([ud objectForKey:PBKeyLayoutSchemaVersion] == nil)
-        [ud setInteger:kLayoutSchemaVersion forKey:PBKeyLayoutSchemaVersion];
+    NSInteger stored = [ud integerForKey:PBKeyLayoutSchemaVersion];   // 0 when unset
+    if (stored >= kLayoutSchemaVersion) return;
+    // v1 → v2: carry an explicit compact choice over; people who never touched
+    // the checkbox land on Auto. Object-presence check so a deliberate prior
+    // OFF maps to Full, not Auto. PBKeyCompact is never written again.
+    if (stored < 2 && [ud objectForKey:PBKeyDensity] == nil && [ud objectForKey:PBKeyCompact] != nil)
+        [ud setInteger:([ud boolForKey:PBKeyCompact] ? PBDensityCompact : PBDensityFull) forKey:PBKeyDensity];
+    [ud setInteger:kLayoutSchemaVersion forKey:PBKeyLayoutSchemaVersion];
 }
 
 // Overlay persisted size-editor overrides on the built-in defaults, dropping
@@ -179,6 +182,15 @@ static NSInteger effectiveOrderForDef(NSInteger mode, TileDef d) {
     NSDictionary *o = [NSUserDefaults.standardUserDefaults dictionaryForKey:orderKeyForType(mode, d.type, d.arg)];
     if (o && o[@"order"]) return [o[@"order"] integerValue];
     return (d.type == TLAUNCH) ? d.arg : naturalIndexForType(mode, d.type);
+}
+
+CGFloat PBRequiredMinContentWidth(NSInteger mode) {
+    TileDef defs[16];
+    int n = tilesForMode(mode, defs);
+    applyTileOverrides(mode, defs, &n);
+    CGFloat sum = 0;
+    for (int i = 0; i < n; i++) sum += defs[i].minW;
+    return sum;
 }
 
 // Compute which tiles are visible for `mode` at content width `avail`, after

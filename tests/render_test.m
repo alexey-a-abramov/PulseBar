@@ -43,10 +43,22 @@ int main(void) { @autoreleasepool {
 
     PBFeedSample(v, 70);
 
+    v.density = PBDensityFull;
     writeGrid(v, W, H, S, @"/tmp/pulsebar_modes.png");      // full layout
-    v.compactLayout = YES;
+    v.density = PBDensityCompact;
     writeGrid(v, W, H, S, @"/tmp/pulsebar_compact.png");    // compact: icon-only pill + actions
-    v.compactLayout = NO;
+    v.density = PBDensityFull;
+
+    // Auto density at a tight width: must render compact (icon-only pill) on its
+    // own — availFull ≈ 256 < System's ~372 required.
+    {
+        BarView *tight = [[BarView alloc] initWithFrame:NSMakeRect(0, 0, 640, H)];
+        tight.pomodoro = pomo; tight.caffeinated = YES; tight.uptime = v.uptime;
+        tight.safeAreaLeftInset = 0; tight.safeAreaRightInset = 110;
+        tight.density = PBDensityAuto;
+        PBFeedSample(tight, 70);
+        writeGrid(tight, 640, H, S, @"/tmp/pulsebar_auto_tight.png");
+    }
 
     // App overlay (⌥ held)
     [v setMode:BarModeSystem animated:NO]; v.appName = @"Telegram"; v.appOverlay = YES;
@@ -77,7 +89,7 @@ int main(void) { @autoreleasepool {
     printf("wrote /tmp/pulsebar_break.png\n");
 
     // Arrange mode (long-press the active pill → drag tiles to reorder)
-    v.breakReminder = NO; v.compactLayout = NO; [v setMode:BarModeSystem animated:NO];
+    v.breakReminder = NO; v.density = PBDensityFull; [v setMode:BarModeSystem animated:NO];
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
     [v performSelector:@selector(enterArrange)];

@@ -17,7 +17,8 @@ extern NSString * const PBKeyAdaptive;     // BOOL  — Pomodoro focus length au
 extern NSString * const PBKeyBreakReminder;// NSInteger — minutes of unbroken session before the take-a-break banner (default 80)
 extern NSString * const PBKeySafeLeft;     // NSInteger — px reserved on the live bar's left for the close box (default 0)
 extern NSString * const PBKeySafeRight;    // NSInteger — px reserved on the live bar's right for the Control Strip (default 110)
-extern NSString * const PBKeyCompact;      // BOOL  — compact layout: icon-only active mode pill + icon-only action tiles
+extern NSString * const PBKeyCompact;      // BOOL  — legacy compact toggle (v1 schema; migrated to PBKeyDensity, never written now)
+extern NSString * const PBKeyDensity;      // NSInteger PBDensity — 0 Auto (adapt to space) · 1 Full · 2 Compact
 extern NSString * const PBKeyAgentSessionTimeout; // NSInteger minutes — start a fresh agent dialogue after this much inactivity (0 = never)
 extern NSString * const PBKeyAgentModel;   // NSString — active Ollama model tag (e.g. "gemma4:12b"); default "gemma3:4b"
 

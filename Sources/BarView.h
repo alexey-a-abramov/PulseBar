@@ -5,6 +5,7 @@
 #import <AppKit/AppKit.h>
 #import "Stats.h"
 #import "Controls.h"
+#import "PBLayout.h"
 
 @class Pomodoro;
 
@@ -51,7 +52,10 @@ typedef NS_ENUM(NSInteger, BarMode) {
 @property (nonatomic) BOOL showCores;          // CPU tile: sparkline vs per-core
 @property (nonatomic) BOOL caffeinated;        // caffeine toggle state
 @property (nonatomic) BOOL animateModeSwitch;  // NO on the live Touch Bar (DFR), YES on desktop
-@property (nonatomic) BOOL compactLayout;      // icon-only active mode pill + icon-only action tiles (tight spaces)
+// Density: Full / Compact, or Auto — render compact when the content area can't
+// fit the mode's full tile set (denser BEFORE the priority system hides tiles).
+@property (nonatomic) PBDensity density;
+@property (nonatomic) BOOL compactLayout;      // legacy shim: getter = effective compact; setter maps to Full/Compact
 @property (nonatomic) BOOL fnMode;             // (legacy) F1–F12 overlay — Fn is handled natively now
 @property (nonatomic) BOOL appOverlay;         // ⌥ held: show the frontmost-app overlay
 @property (nonatomic, copy)   NSString *appName;
@@ -72,6 +76,12 @@ typedef NS_ENUM(NSInteger, BarMode) {
 
 - (void)setMode:(NSInteger)mode animated:(BOOL)animated;
 - (NSInteger)recentMode;       // the previously-active mode
+
+// The Auto-density predicate (pure; unit-tested). Computes the space left for
+// content from the FULL-density tab widths — never from the current compact
+// state — so the decision can't feed back into itself and oscillate.
++ (BOOL)effectiveCompactForMode:(NSInteger)mode density:(PBDensity)density
+                          width:(CGFloat)width left:(CGFloat)li right:(CGFloat)ri;
 - (void)beginPeekMode;         // ⌃ held: momentarily show the previous mode (recentMode is preserved)
 - (void)endPeekMode;           // ⌃ released: restore the mode shown before the peek
 

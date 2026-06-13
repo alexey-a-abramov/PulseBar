@@ -52,7 +52,7 @@
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
     NSMenuItem *_fnItem;
-    NSMenuItem *_compactItem;
+    NSMenu *_densityMenu;
 }
 
 #pragma mark - lifecycle
@@ -165,12 +165,12 @@
     // Apple's ✕ shifts the whole active area to the right, so the agent orb on the
     // trailing edge falls off-screen. We "squeeze" the layout from the RIGHT so the
     // orb lands back inside the visible area. The shift itself clears the ✕, so no
-    // LEFT reserve is needed by default. Both are live-adjustable in Settings → Fit
+    // LEFT reserve is needed by default. Both are live-adjustable in Settings → Layout
     // (and via `defaults write com.fun.pulsebar safeAreaRight <px>`).
-    NSUserDefaults *du = NSUserDefaults.standardUserDefaults;
     self.barView.safeAreaLeftInset  = PBDefaultsInteger(PBKeySafeLeft,  PBDefaultSafeLeft);
     self.barView.safeAreaRightInset = PBDefaultsInteger(PBKeySafeRight, PBDefaultSafeRight);
-    self.barView.compactLayout = [du boolForKey:PBKeyCompact];   // icon-only pill + actions when space is tight
+    [BarView ensureLayoutSchema];   // migrate the legacy compact bool → density before reading it
+    self.barView.density = (PBDensity)PBDefaultsInteger(PBKeyDensity, PBDensityAuto);
     self.presenter = [[PBTouchBarPresenter alloc] initWithContentView:self.barView];
 }
 
@@ -212,11 +212,19 @@
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Settings…"                  action:@selector(showSettings)     keyEquivalent:@","];
     [menu addItemWithTitle:@"Customize Layout…"          action:@selector(showLayoutEditor) keyEquivalent:@""];
-    _fnItem = [menu addItemWithTitle:@"Modifier Shortcuts  (⌃ peek · ⌥ app)" action:@selector(toggleModifiers) keyEquivalent:@""];
 
-    // Touch Bar
-    [menu addItem:[NSMenuItem separatorItem]];
-    _compactItem = [menu addItemWithTitle:@"Compact Layout (icon-only)" action:@selector(toggleCompact) keyEquivalent:@""];
+    // Density — Auto adapts to tight space; Full/Compact pin the look.
+    NSMenuItem *density = [[NSMenuItem alloc] initWithTitle:@"Density" action:nil keyEquivalent:@""];
+    NSMenu *densitySub = [[NSMenu alloc] init];
+    [densitySub addItemWithTitle:@"Auto (adapt to space)" action:@selector(pickDensity:) keyEquivalent:@""].tag = PBDensityAuto;
+    [densitySub addItemWithTitle:@"Full"                  action:@selector(pickDensity:) keyEquivalent:@""].tag = PBDensityFull;
+    [densitySub addItemWithTitle:@"Compact (icon-only)"   action:@selector(pickDensity:) keyEquivalent:@""].tag = PBDensityCompact;
+    for (NSMenuItem *it in densitySub.itemArray) it.target = self;
+    density.submenu = densitySub;
+    [menu addItem:density];
+    _densityMenu = densitySub;
+
+    _fnItem = [menu addItemWithTitle:@"Modifier Shortcuts  (⌃ peek · ⌥ app)" action:@selector(toggleModifiers) keyEquivalent:@""];
 
     // Diagnostics submenu (mirror · re-take · log)
     NSMenuItem *diag = [[NSMenuItem alloc] initWithTitle:@"Diagnostics" action:nil keyEquivalent:@""];
@@ -231,9 +239,16 @@
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Quit PulseBar"              action:@selector(quit)             keyEquivalent:@"q"];
     for (NSMenuItem *it in menu.itemArray) if (it.action) it.target = self;
-    _compactItem.state = self.barView.compactLayout ? NSControlStateValueOn : NSControlStateValueOff;
+    [self syncDensityMenu];
     self.statusItem.menu = menu;
 }
+
+// Radio-check the active density in the menu.
+- (void)syncDensityMenu {
+    for (NSMenuItem *it in _densityMenu.itemArray)
+        it.state = (it.tag == self.barView.density) ? NSControlStateValueOn : NSControlStateValueOff;
+}
+- (void)pickDensity:(NSMenuItem *)item { [self setDensity:(PBDensity)item.tag]; }
 
 #pragma mark - desktop mirror (companion window — exact, clickable copy of the bar)
 
@@ -252,7 +267,7 @@
         // of what the Touch Bar shows (and the reserved zones are visible here).
         self.mirror.bar.safeAreaLeftInset  = self.barView.safeAreaLeftInset;
         self.mirror.bar.safeAreaRightInset = self.barView.safeAreaRightInset;
-        self.mirror.bar.compactLayout = self.barView.compactLayout;
+        self.mirror.bar.density = self.barView.density;
     }
     [self.mirror show];
 }
@@ -261,12 +276,11 @@
 
 // Compact layout — icon-only active pill + icon-only action tiles. Applies to the
 // live bar and the mirror, persists, and keeps the menu check in sync.
-- (void)setCompact:(BOOL)on {
-    [self broadcast:^(BarView *b){ b.compactLayout = on; }];
-    _compactItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
-    [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyCompact];
+- (void)setDensity:(PBDensity)d {
+    [self broadcast:^(BarView *b){ b.density = d; }];
+    [NSUserDefaults.standardUserDefaults setInteger:d forKey:PBKeyDensity];
+    [self syncDensityMenu];
 }
-- (void)toggleCompact { [self setCompact:!self.barView.compactLayout]; }
 
 #pragma mark - Touch Bar attach / detach
 
@@ -608,8 +622,8 @@
     [self broadcast:^(BarView *b){ b.safeAreaRightInset = px; }];
     [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)lround(px) forKey:PBKeySafeRight];
 }
-- (BOOL)settingsCompact { return self.barView.compactLayout; }
-- (void)settingsSetCompact:(BOOL)on { [self setCompact:on]; }
+- (NSInteger)settingsDensity { return self.barView.density; }
+- (void)settingsSetDensity:(NSInteger)d { [self setDensity:(PBDensity)d]; }
 - (NSString *)settingsAgentModel { return PBDefaultsString(PBKeyAgentModel, @"gemma3:4b"); }
 - (void)settingsSetAgentModel:(NSString *)tag {
     if (!tag.length) return;

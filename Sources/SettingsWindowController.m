@@ -21,7 +21,7 @@
     NSTabView  *_tabs;
     NSSlider   *_leftSlider, *_rightSlider;
     NSTextField *_leftVal, *_rightVal;
-    NSButton   *_compactCheck;
+    NSSegmentedControl *_densitySeg;
     NSPopUpButton *_modelPopup, *_downloadPopup;
     NSTextField *_modelStatus, *_dlStatus;
     NSButton   *_downloadBtn;
@@ -75,14 +75,10 @@ static NSTextField *help(NSString *s, NSRect f) {
     [c addSubview:_tabs];
 
     [_tabs addTabViewItem:[self generalTab]];
-    [_tabs addTabViewItem:[self fitTab]];
+    [_tabs addTabViewItem:[self layoutTab]];
     [_tabs addTabViewItem:[self focusTab]];
     [_tabs addTabViewItem:[self agentTab]];
     [_tabs addTabViewItem:[self notesTab]];
-
-    NSButton *layout = [NSButton buttonWithTitle:@"Customize layout…" target:self action:@selector(editLayout:)];
-    layout.frame = NSMakeRect(16, 10, 160, 28); layout.bezelStyle = NSBezelStyleRounded;
-    [c addSubview:layout];
 
     NSButton *quit = [NSButton buttonWithTitle:@"Quit PulseBar" target:self action:@selector(doQuit:)];
     quit.frame = NSMakeRect(kW - 140, 10, 124, 28); quit.bezelStyle = NSBezelStyleRounded;
@@ -132,44 +128,57 @@ static NSTextField *help(NSString *s, NSRect f) {
     return it;
 }
 
-- (NSTabViewItem *)fitTab {
-    NSTabViewItem *it = [[NSTabViewItem alloc] initWithIdentifier:@"fit"];
-    it.label = @"Fit";
+- (NSTabViewItem *)layoutTab {
+    NSTabViewItem *it = [[NSTabViewItem alloc] initWithIdentifier:@"layout"];
+    it.label = @"Layout";
     NSView *c = [self pageView]; it.view = c;
     CGFloat top = c.frame.size.height, W = c.frame.size.width;
 
-    [self section:@"Fit to your Touch Bar" in:c at:top - 22];
-    [c addSubview:help(@"Apple's ✕ shifts the bar to the right and its Control Strip can crowd the\nedges. Nudge the active area so every tile — and the agent orb — stays visible.",
-                       NSMakeRect(20, top - 64, W - 40, 32))];
+    // Density — the first-order layout choice.
+    [self section:@"Density" in:c at:top - 22];
+    _densitySeg = [NSSegmentedControl segmentedControlWithLabels:@[@"Auto", @"Full", @"Compact"]
+                                                    trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                          target:self action:@selector(densityChanged:)];
+    _densitySeg.frame = NSMakeRect(20, top - 54, 240, 24); [c addSubview:_densitySeg];
+    [c addSubview:help(@"Auto goes icon-only before any tile has to be hidden when the bar is tight;\nFull and Compact pin the look.",
+                       NSMakeRect(20, top - 90, W - 40, 32))];
 
-    // Right squeeze (the one that brings the agent orb back into view)
-    [c addSubview:label(@"Right squeeze", NSMakeRect(20, top - 98, 100, 18), 11, NO)];
+    // Fit — insets that keep tiles clear of system chrome.
+    [self section:@"Fit to your Touch Bar" in:c at:top - 118];
+    [c addSubview:help(@"Apple's ✕ shifts the bar right; its Control Strip can cover the right edge.\nPreview live on the Desktop Mirror as you adjust.",
+                       NSMakeRect(20, top - 158, W - 40, 32))];
+
+    [c addSubview:label(@"Right squeeze", NSMakeRect(20, top - 184, 100, 18), 11, NO)];
     _rightSlider = [NSSlider sliderWithValue:PBDefaultSafeRight minValue:0 maxValue:232 target:self action:@selector(changeRight:)];
-    _rightSlider.frame = NSMakeRect(125, top - 100, W - 125 - 66, 20); _rightSlider.continuous = YES;
+    _rightSlider.frame = NSMakeRect(125, top - 186, W - 125 - 66, 20); _rightSlider.continuous = YES;
     [c addSubview:_rightSlider];
-    _rightVal = label([NSString stringWithFormat:@"%ld px", (long)PBDefaultSafeRight], NSMakeRect(W - 58, top - 98, 50, 18), 11, NO); [c addSubview:_rightVal];
-    [c addSubview:help(@"Clears the system Control Strip on the right (≈110px collapsed, up to ≈232px expanded) so tiles and the agent orb aren't covered.",
-                       NSMakeRect(20, top - 120, W - 40, 16))];
+    _rightVal = label([NSString stringWithFormat:@"%ld px", (long)PBDefaultSafeRight], NSMakeRect(W - 58, top - 184, 50, 18), 11, NO); [c addSubview:_rightVal];
 
-    // Left reserve (usually 0 — the shift already clears the ✕)
-    [c addSubview:label(@"Left reserve", NSMakeRect(20, top - 152, 100, 18), 11, NO)];
+    [c addSubview:label(@"Left reserve", NSMakeRect(20, top - 212, 100, 18), 11, NO)];
     _leftSlider = [NSSlider sliderWithValue:0 minValue:0 maxValue:120 target:self action:@selector(changeLeft:)];
-    _leftSlider.frame = NSMakeRect(125, top - 154, W - 125 - 66, 20); _leftSlider.continuous = YES;
+    _leftSlider.frame = NSMakeRect(125, top - 214, W - 125 - 66, 20); _leftSlider.continuous = YES;
     [c addSubview:_leftSlider];
-    _leftVal = label(@"0 px", NSMakeRect(W - 58, top - 152, 50, 18), 11, NO); [c addSubview:_leftVal];
-    [c addSubview:help(@"Space kept on the left for the ✕ (usually 0 — the shift already clears it).",
-                       NSMakeRect(20, top - 174, W - 40, 16))];
+    _leftVal = label(@"0 px", NSMakeRect(W - 58, top - 212, 50, 18), 11, NO); [c addSubview:_leftVal];
 
-    _compactCheck = [NSButton checkboxWithTitle:@"Compact layout — icon-only mode pill & action tiles"
-                                         target:self action:@selector(toggleCompact:)];
-    _compactCheck.frame = NSMakeRect(20, top - 200, W - 40, 20); [c addSubview:_compactCheck];
-    [c addSubview:help(@"Drops text labels so more fits in a tight bar. The active mode shows as a\ncoloured icon; the agent orb always stays visible.",
-                       NSMakeRect(40, top - 236, W - 60, 32))];
+    [c addSubview:label(@"Preset", NSMakeRect(20, top - 244, 50, 18), 11, NO)];
+    NSArray *presets = @[@"Edge to Edge", @"Control Strip", @"Strip Expanded"];
+    CGFloat px = 80;
+    for (NSUInteger i = 0; i < presets.count; i++) {
+        NSButton *b = [NSButton buttonWithTitle:presets[i] target:self action:@selector(applyFitPreset:)];
+        b.bezelStyle = NSBezelStyleRounded; b.controlSize = NSControlSizeSmall;
+        b.font = [NSFont systemFontOfSize:11]; b.tag = (NSInteger)i;
+        [b sizeToFit]; NSRect bf = b.frame; bf.origin = NSMakePoint(px, top - 248); b.frame = bf;
+        [c addSubview:b]; px += bf.size.width + 8;
+    }
+    [c addSubview:help(@"Edge to Edge = use everything · Control Strip = clear the collapsed strip\n(default) · Strip Expanded = clear the expanded strip.",
+                       NSMakeRect(20, top - 286, W - 40, 32))];
 
-    NSButton *reset = [NSButton buttonWithTitle:@"Reset" target:self action:@selector(resetFit:)];
-    reset.frame = NSMakeRect(20, top - 274, 90, 26); reset.bezelStyle = NSBezelStyleRounded; [c addSubview:reset];
-    [c addSubview:help(@"Tip: open the Desktop Mirror (menu → Show Desktop Mirror) to preview live.",
-                       NSMakeRect(118, top - 270, W - 130, 30))];
+    // Tiles — per-tile arrangement lives in the editor.
+    [self section:@"Tiles" in:c at:top - 314];
+    NSButton *arrange = [NSButton buttonWithTitle:@"Arrange & Resize Tiles…" target:self action:@selector(editLayout:)];
+    arrange.frame = NSMakeRect(20, top - 348, 190, 26); arrange.bezelStyle = NSBezelStyleRounded; [c addSubview:arrange];
+    [c addSubview:help(@"Tip: long-press the active mode pill on the bar to drag-reorder tiles in place.",
+                       NSMakeRect(20, top - 370, W - 40, 16))];
     return it;
 }
 
@@ -353,7 +362,7 @@ static NSTextField *help(NSString *s, NSRect f) {
     _leftSlider.doubleValue = sl; _rightSlider.doubleValue = sr;
     _leftVal.stringValue  = [NSString stringWithFormat:@"%ld px", (long)lround(sl)];
     _rightVal.stringValue = [NSString stringWithFormat:@"%ld px", (long)lround(sr)];
-    _compactCheck.state = [_delegate settingsCompact] ? NSControlStateValueOn : NSControlStateValueOff;
+    _densitySeg.selectedSegment = [_delegate settingsDensity];   // PBDensity ordinals match segment order
     NSInteger atm = [_delegate settingsAgentTimeoutMinutes];
     _agentTimeoutStep.integerValue = atm;
     _agentTimeoutVal.stringValue = atm <= 0 ? @"never" : [NSString stringWithFormat:@"%ld min idle", (long)atm];
@@ -434,11 +443,15 @@ static NSTextField *help(NSString *s, NSRect f) {
     _rightVal.stringValue = [NSString stringWithFormat:@"%ld px", (long)lround(s.doubleValue)];
     [_delegate settingsSetSafeRight:(CGFloat)s.doubleValue];
 }
-- (void)resetFit:(id)sender {
-    _leftSlider.doubleValue = PBDefaultSafeLeft; _rightSlider.doubleValue = PBDefaultSafeRight;
+// Fit presets: insets only — density is orthogonal and never touched here.
+- (void)applyFitPreset:(NSButton *)b {
+    CGFloat l = 0, r = PBDefaultSafeRight;             // tag 1 "Control Strip" (the default)
+    if (b.tag == 0)      { l = 0; r = 0;   }           // "Edge to Edge"
+    else if (b.tag == 2) { l = 0; r = 232; }           // "Strip Expanded"
+    _leftSlider.doubleValue = l; _rightSlider.doubleValue = r;
     [self changeLeft:_leftSlider]; [self changeRight:_rightSlider];
 }
-- (void)toggleCompact:(NSButton *)b { [_delegate settingsSetCompact:(b.state == NSControlStateValueOn)]; }
+- (void)densityChanged:(NSSegmentedControl *)s { [_delegate settingsSetDensity:s.selectedSegment]; }
 - (void)editLayout:(id)s { [_delegate settingsEditLayout]; }
 - (void)doQuit:(id)s { [_delegate settingsQuit]; }
 

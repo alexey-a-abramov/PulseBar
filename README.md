@@ -75,7 +75,7 @@ volume/brightness/media, you lose nothing.
 PulseBar hides the Control Strip the no-flicker way — it **presents with `placement:1`**
 (MTMR's trick), which suppresses it natively without restarting the Touch Bar agent —
 and suppresses the system close box (✕) at setup. If a stray ✕ or Control Strip still
-creeps in, **Settings → Fit** lets you *squeeze* the layout (live slider) so every tile
+creeps in, **Settings → Layout** lets you *squeeze* the layout (live sliders + presets) so every tile
 and the agent orb stay clear, and the menu's **"Re-take Over the Touch Bar"** (⌘R) does
 the heavy reset (writes `PresentationModeGlobal=app` + restarts the agent). All
 reversible: it backs up your previous value and restores it on quit. It does **not**
