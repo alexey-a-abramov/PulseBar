@@ -13,7 +13,10 @@ typedef NS_ENUM(NSInteger, TileType) {
     TMEDIA, TVOL, TMUTE, TBRIGHT, TPOMO,
     TCAFFEINE, TSC_LOCK, TSC_SLEEP, TSC_SHOT, TSC_DARK, TSC_MISSION, TSC_NOTE,
     TSC_LAUNCH, TSC_ACTIVITY, TSC_REMIND, TLAUNCH, TSESSION, TNOTE,
-    TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TAPP_HIDE, TAPP_QUIT, TTAB
+    TAGENT, TBATT, TCLOCK, TSETTINGS, TFKEY, TAPP_HIDE, TAPP_QUIT,
+    TWCLOCK,        // world clock — instanced by city index (arg = gCities idx)
+    TTEMP,          // CPU temperature + fan
+    TTAB            // active-mode pill — keep LAST: tileTypeForToken iterates [0, TTAB]
 };
 
 // Layout spec for one tile in a mode's content area.

@@ -60,6 +60,7 @@ NSString *tileName(TileType t) {
         case TSC_DARK: return @"Dark Mode";case TSC_MISSION: return @"Mission Control";
         case TSC_LAUNCH: return @"Launchpad"; case TSC_ACTIVITY: return @"Activity";
         case TLAUNCH: return @"App"; case TSESSION: return @"Session"; case TNOTE: return @"Side Note";
+        case TWCLOCK: return @"World Clock"; case TTEMP: return @"Temperature";
         default: return @"—";
     }
 }
@@ -77,6 +78,7 @@ static NSString *tileToken(TileType t) {
         case TSC_SHOT: return @"sc_shot";  case TSC_DARK: return @"sc_dark";case TSC_MISSION: return @"sc_mission";
         case TSC_NOTE: return @"sc_note";  case TSC_LAUNCH: return @"sc_launch"; case TSC_ACTIVITY: return @"sc_activity";
         case TSC_REMIND: return @"sc_remind"; case TLAUNCH: return @"launch"; case TSESSION: return @"sess"; case TNOTE: return @"note";
+        case TWCLOCK: return @"wclock"; case TTEMP: return @"temp";
         default: return [NSString stringWithFormat:@"t%d", (int)t];
     }
 }
@@ -96,7 +98,7 @@ NSString *overrideKey(NSInteger mode, TileType t) {
 // clocks) — they're disambiguated by `arg`, so their override/order keys get a
 // per-instance ".<arg>" suffix and they don't share one size-override dict. Every
 // other type is single-instance per mode. Add new instanced types here, in ONE place.
-static BOOL pb_isInstanced(TileType t) { return t == TLAUNCH; }
+static BOOL pb_isInstanced(TileType t) { return t == TLAUNCH || t == TWCLOCK; }
 
 // Order key for a tile *instance*: instanced types get a ".<arg>" suffix so each
 // instance orders individually; single-instance types keep the plain override key.

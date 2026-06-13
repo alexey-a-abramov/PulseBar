@@ -8,6 +8,7 @@
 #import "Pomodoro.h"
 #import "PBDefaults.h"
 #import "PBLayout.h"
+#import "PBClock.h"
 #import "AppIndex.h"
 #import "Log.h"
 #import "PBFormat.h"
@@ -578,6 +579,18 @@ static int viewCount(TileType t) {
             else [self symbol:@"app.dashed" in:NSMakeRect(r.origin.x, 4, r.size.width, d) pt:14 color:[self accent]];
             [self tc:@(L->label) cx:NSMidX(r) y:23 sz:6.5 w:NSFontWeightBold c:[self dim]];
             break; }
+        case TWCLOCK: {   // world clock — DST-correct time for the city at `arg`
+            int ci = (int)tile.arg;
+            const PBCity *c = PBCityAt(ci);
+            [self label:@(c->label) in:r];
+            [self t:PBClockTimeForCity(ci) at:NSMakePoint(r.origin.x + 6, 12) sz:13 w:NSFontWeightBold c:[self accent]];
+            NSString *tag = PBClockOffsetTag(ci);
+            if (tag.length) [self t:tag rx:NSMaxX(r) - 4 y:3 sz:8 w:NSFontWeightSemibold c:[self dim]];
+            int dd = PBClockDayDelta(ci);
+            if (dd != 0) [self t:(dd > 0 ? @"+1d" : @"−1d") rx:NSMaxX(r) - 4 y:NSMaxY(r) - 10
+                              sz:7.5 w:NSFontWeightBold c:(dd > 0 ? [self green] : [self pink])];
+            break; }
+        case TTEMP: break;   // CPU temp + fan — implemented with the thermal sampler
         case TFKEY: case TAPP_HIDE: case TAPP_QUIT: case TTAB: break;   // drawn inline by overlays
     }
     [NSGraphicsContext restoreGraphicsState];
