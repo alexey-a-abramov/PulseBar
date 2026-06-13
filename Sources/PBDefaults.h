@@ -21,6 +21,8 @@ extern NSString * const PBKeyCompact;      // BOOL  — legacy compact toggle (v
 extern NSString * const PBKeyDensity;      // NSInteger PBDensity — 0 Auto (adapt to space) · 1 Full · 2 Compact
 extern NSString * const PBKeyTabsCollapsed; // BOOL — collapse the mode-tab strip to the active pill (default NO)
 extern NSString * const PBKeyCustomLaunchers; // NSArray of {label,query} — user-added app launchers beyond the curated set
+extern NSString * const PBKeyAutoModeEnabled; // BOOL — auto-switch the bar's mode when the frontmost app changes (default NO)
+extern NSString * const PBKeyAutoModeRules;   // NSArray of {bundleID,name,mode} — per-app → mode rules
 extern NSString * const PBKeyAgentSessionTimeout; // NSInteger minutes — start a fresh agent dialogue after this much inactivity (0 = never)
 extern NSString * const PBKeyAgentModel;   // NSString — active Ollama model tag (e.g. "gemma4:12b"); default "gemma3:4b"
 

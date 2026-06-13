@@ -35,6 +35,11 @@
 - (void)settingsSetDensity:(NSInteger)d;
 - (BOOL)settingsTabsCollapsed;            // collapse the mode-tab strip to the active pill
 - (void)settingsSetTabsCollapsed:(BOOL)collapsed;
+// Per-app auto-mode switch
+- (BOOL)settingsAutoModeEnabled;
+- (void)settingsSetAutoModeEnabled:(BOOL)on;
+- (NSArray<NSDictionary *> *)settingsAutoModeRules;        // [{bundleID,name,mode}]
+- (void)settingsSetAutoModeRules:(NSArray<NSDictionary *> *)rules;
 // Agent
 - (NSString *)settingsAgentModel;
 - (void)settingsSetAgentModel:(NSString *)tag;

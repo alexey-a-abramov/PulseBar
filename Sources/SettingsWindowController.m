@@ -4,10 +4,15 @@
 //  (the side-note history, with CSV export).
 //
 #import "SettingsWindowController.h"
+#import "BarView.h"      // nameForMode + BarModeCount (auto-mode rules)
 #import "VoiceNotes.h"
 #import "PBDefaults.h"
 #import "PBOllama.h"
 #import "Log.h"
+
+// Flipped list view so the auto-mode rule rows lay out top→down.
+@interface PBRulesView : NSView @end
+@implementation PBRulesView - (BOOL)isFlipped { return YES; } @end
 
 @interface SettingsWindowController () <NSTextFieldDelegate>
 @end
@@ -23,6 +28,10 @@
     NSTextField *_leftVal, *_rightVal;
     NSSegmentedControl *_densitySeg;
     NSButton   *_collapseTabs;
+    NSButton   *_autoModeCheck;
+    NSView     *_rulesHost;
+    NSTextField *_rulesEmpty;
+    NSMutableArray<NSMutableDictionary *> *_rules;
     NSPopUpButton *_modelPopup, *_downloadPopup;
     NSTextField *_modelStatus, *_dlStatus;
     NSButton   *_downloadBtn;
@@ -77,6 +86,7 @@ static NSTextField *help(NSString *s, NSRect f) {
 
     [_tabs addTabViewItem:[self generalTab]];
     [_tabs addTabViewItem:[self layoutTab]];
+    [_tabs addTabViewItem:[self modesTab]];
     [_tabs addTabViewItem:[self focusTab]];
     [_tabs addTabViewItem:[self agentTab]];
     [_tabs addTabViewItem:[self notesTab]];
@@ -184,6 +194,86 @@ static NSTextField *help(NSString *s, NSRect f) {
     [c addSubview:help(@"Tip: long-press the active mode pill on the bar to drag-reorder tiles in place.",
                        NSMakeRect(20, top - 370, W - 40, 16))];
     return it;
+}
+
+// Auto-switch the bar's mode per frontmost app (off by default).
+- (NSTabViewItem *)modesTab {
+    NSTabViewItem *it = [[NSTabViewItem alloc] initWithIdentifier:@"modes"];
+    it.label = @"Auto-Switch";
+    NSView *c = [self pageView]; it.view = c;
+    CGFloat top = c.frame.size.height, W = c.frame.size.width;
+
+    [self section:@"Switch mode per app" in:c at:top - 22];
+    _autoModeCheck = [NSButton checkboxWithTitle:@"Switch the bar's mode automatically when you change apps"
+                                          target:self action:@selector(autoModeToggled:)];
+    _autoModeCheck.frame = NSMakeRect(20, top - 52, W - 40, 22); [c addSubview:_autoModeCheck];
+    [c addSubview:help(@"Pair an app with a mode below. When that app comes to the front, the bar switches to its\nmode. A manual switch still sticks until you change apps again. Off by default.",
+                       NSMakeRect(20, top - 86, W - 40, 32))];
+
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(20, 52, W - 40, top - 150)];
+    scroll.hasVerticalScroller = YES; scroll.borderType = NSBezelBorder; scroll.autohidesScrollers = YES;
+    _rulesHost = [[PBRulesView alloc] initWithFrame:NSMakeRect(0, 0, W - 40, top - 150)];
+    scroll.documentView = _rulesHost; [c addSubview:scroll];
+    _rulesEmpty = label(@"No rules yet — add an app below.", NSMakeRect(12, top - 184, W - 64, 18), 11, NO);
+    _rulesEmpty.textColor = [NSColor secondaryLabelColor]; [_rulesHost addSubview:_rulesEmpty];
+
+    NSButton *add = [NSButton buttonWithTitle:@"Add App Rule…" target:self action:@selector(addAppRule:)];
+    add.frame = NSMakeRect(20, 14, 150, 28); add.bezelStyle = NSBezelStyleRounded; [c addSubview:add];
+    return it;
+}
+
+// Rebuild the rule rows from _rules into the (flipped) list host.
+- (void)reloadRules {
+    for (NSView *v in [_rulesHost.subviews copy]) if (v != _rulesEmpty) [v removeFromSuperview];
+    _rulesEmpty.hidden = (_rules.count > 0);
+    CGFloat W = _rulesHost.frame.size.width, rowH = 30;
+    _rulesHost.frame = NSMakeRect(0, 0, W, MAX(_rulesHost.superview.bounds.size.height, _rules.count * rowH + 8));
+    CGFloat y = 6;
+    for (NSInteger i = 0; i < (NSInteger)_rules.count; i++) {
+        NSDictionary *r = _rules[i];
+        [_rulesHost addSubview:label(r[@"name"] ?: r[@"bundleID"], NSMakeRect(12, y + 6, W - 12 - 230, 18), 12, NO)];
+
+        NSPopUpButton *modePop = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(W - 220, y + 3, 150, 24)];
+        for (NSInteger m = 0; m < BarModeCount; m++) [modePop addItemWithTitle:[BarView nameForMode:m]];
+        [modePop selectItemAtIndex:MAX(0, MIN(BarModeCount - 1, [r[@"mode"] integerValue]))];
+        modePop.target = self; modePop.action = @selector(ruleModeChanged:); modePop.tag = i;
+        [_rulesHost addSubview:modePop];
+
+        NSButton *del = [NSButton buttonWithTitle:@"✕" target:self action:@selector(removeRule:)];
+        del.frame = NSMakeRect(W - 56, y + 3, 28, 24); del.bezelStyle = NSBezelStyleRounded; del.tag = i;
+        [_rulesHost addSubview:del];
+        y += rowH;
+    }
+}
+
+- (void)autoModeToggled:(NSButton *)b { [_delegate settingsSetAutoModeEnabled:(b.state == NSControlStateValueOn)]; }
+
+- (void)addAppRule:(id)sender {
+    NSOpenPanel *p = [NSOpenPanel openPanel];
+    p.canChooseFiles = YES; p.canChooseDirectories = NO; p.allowsMultipleSelection = NO;
+    p.allowedFileTypes = @[@"app"]; p.directoryURL = [NSURL fileURLWithPath:@"/Applications"];
+    p.prompt = @"Add"; p.message = @"Choose an app to pair with a mode";
+    if ([p runModal] != NSModalResponseOK || !p.URL) return;
+    NSString *bid = [NSBundle bundleWithURL:p.URL].bundleIdentifier;
+    NSString *name = p.URL.lastPathComponent.stringByDeletingPathExtension;
+    if (!bid.length) return;
+    for (NSMutableDictionary *r in _rules) if ([r[@"bundleID"] isEqualToString:bid]) return;   // dedup
+    [_rules addObject:[@{ @"bundleID": bid, @"name": name, @"mode": @(0) } mutableCopy]];
+    [_delegate settingsSetAutoModeRules:_rules];
+    [self reloadRules];
+}
+
+- (void)ruleModeChanged:(NSPopUpButton *)p {
+    if (p.tag < 0 || p.tag >= (NSInteger)_rules.count) return;
+    _rules[p.tag][@"mode"] = @(p.indexOfSelectedItem);
+    [_delegate settingsSetAutoModeRules:_rules];
+}
+
+- (void)removeRule:(NSButton *)b {
+    if (b.tag < 0 || b.tag >= (NSInteger)_rules.count) return;
+    [_rules removeObjectAtIndex:b.tag];
+    [_delegate settingsSetAutoModeRules:_rules];
+    [self reloadRules];
 }
 
 - (NSTabViewItem *)focusTab {
@@ -368,6 +458,10 @@ static NSTextField *help(NSString *s, NSRect f) {
     _rightVal.stringValue = [NSString stringWithFormat:@"%ld px", (long)lround(sr)];
     _densitySeg.selectedSegment = [_delegate settingsDensity];   // PBDensity ordinals match segment order
     _collapseTabs.state = [_delegate settingsTabsCollapsed] ? NSControlStateValueOn : NSControlStateValueOff;
+    _autoModeCheck.state = [_delegate settingsAutoModeEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
+    _rules = [NSMutableArray array];
+    for (NSDictionary *r in [_delegate settingsAutoModeRules]) [_rules addObject:[r mutableCopy]];
+    [self reloadRules];
     NSInteger atm = [_delegate settingsAgentTimeoutMinutes];
     _agentTimeoutStep.integerValue = atm;
     _agentTimeoutVal.stringValue = atm <= 0 ? @"never" : [NSString stringWithFormat:@"%ld min idle", (long)atm];

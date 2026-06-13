@@ -137,6 +137,26 @@
     if (getenv("PULSEBAR_SELFQUIT")) return;   // don't fight the Touch Bar under test
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(suppressChrome) object:nil];
     [self performSelector:@selector(suppressChrome) withObject:nil afterDelay:0.12];   // coalesce rapid switches
+    [self autoSwitchModeForApp:n.userInfo[NSWorkspaceApplicationKey]];
+}
+
+// Per-app auto-mode switch (off by default): when a mapped app comes to the
+// front, switch the bar to the paired mode. A manual mode change still sticks
+// until the next app switch — we only react to the app becoming frontmost.
+- (void)autoSwitchModeForApp:(NSRunningApplication *)app {
+    if (![NSUserDefaults.standardUserDefaults boolForKey:PBKeyAutoModeEnabled]) return;
+    NSString *bid = app.bundleIdentifier;
+    if (!bid.length) return;
+    NSArray *rules = [NSUserDefaults.standardUserDefaults arrayForKey:PBKeyAutoModeRules];
+    for (NSDictionary *r in rules) {
+        if (![r[@"bundleID"] isEqualToString:bid]) continue;
+        NSInteger m = [r[@"mode"] integerValue];
+        if (m >= 0 && m < BarModeCount && m != self.barView.mode) {
+            [self.barView setMode:m animated:self.barView.animateModeSwitch];
+            [self barDidChangeMode:m];   // sync mirror + persisted last mode
+        }
+        return;
+    }
 }
 - (void)suppressChrome { [self.presenter suppressCloseBox]; }
 - (void)pauseSampling { [self.timer invalidate]; self.timer = nil; }
@@ -651,6 +671,10 @@
 - (void)settingsSetDensity:(NSInteger)d { [self setDensity:(PBDensity)d]; }
 - (BOOL)settingsTabsCollapsed { return self.barView.tabsCollapsed; }
 - (void)settingsSetTabsCollapsed:(BOOL)c { [self setTabsCollapsed:c]; }
+- (BOOL)settingsAutoModeEnabled { return [NSUserDefaults.standardUserDefaults boolForKey:PBKeyAutoModeEnabled]; }
+- (void)settingsSetAutoModeEnabled:(BOOL)on { [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyAutoModeEnabled]; }
+- (NSArray<NSDictionary *> *)settingsAutoModeRules { return [NSUserDefaults.standardUserDefaults arrayForKey:PBKeyAutoModeRules] ?: @[]; }
+- (void)settingsSetAutoModeRules:(NSArray<NSDictionary *> *)rules { [NSUserDefaults.standardUserDefaults setObject:(rules ?: @[]) forKey:PBKeyAutoModeRules]; }
 - (NSString *)settingsAgentModel { return PBDefaultsString(PBKeyAgentModel, @"gemma3:4b"); }
 - (void)settingsSetAgentModel:(NSString *)tag {
     if (!tag.length) return;

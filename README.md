@@ -94,6 +94,9 @@ window:
   on the mirror) and toggle **Compact layout** (icon-only mode pill + action tiles).
 - **Focus** — Pomodoro work/break, adaptive length, and the unmutable **break reminder**
   (a full-width "take a break" nudge after a long unbroken session, repeating every 15 min).
+- **Auto-Switch** — pair apps with modes so the bar switches automatically when you change apps
+  (e.g. Xcode → System, Music → Media, Dynalist → Glance). Off by default; a manual switch still
+  sticks until the next app change.
 - **Notes** — your captured side-notes history, with CSV export.
 
 Other shortcuts: hold **⌃** to peek your previous mode (release to snap back); **long-press

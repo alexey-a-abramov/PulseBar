@@ -19,6 +19,8 @@ NSString * const PBKeyCompact     = @"compactLayout";
 NSString * const PBKeyDensity     = @"density";
 NSString * const PBKeyTabsCollapsed = @"tabsCollapsed";
 NSString * const PBKeyCustomLaunchers = @"customLaunchers";
+NSString * const PBKeyAutoModeEnabled = @"autoModeEnabled";
+NSString * const PBKeyAutoModeRules   = @"autoModeRules";
 NSString * const PBKeyAgentSessionTimeout = @"agentSessionTimeoutMin";
 NSString * const PBKeyAgentModel  = @"agentModel";
 
