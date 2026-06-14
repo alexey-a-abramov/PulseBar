@@ -473,7 +473,7 @@ static int viewCount(TileType t) {
             }
             break; }
         case TMEDIA: {
-            CGFloat by = 4, bs = 22, gap = 2, x0 = r.origin.x + 4;
+            CGFloat by = 4, bs = 22, gap = 6, x0 = r.origin.x + 4;
             [self symbol:@"backward.fill"                       in:NSMakeRect(x0, by, bs, bs) pt:11 color:[NSColor whiteColor]];
             [self symbol:_npPlaying ? @"pause.fill" : @"play.fill" in:NSMakeRect(x0 + bs + gap, by, bs, bs) pt:12
                    color:_npPlaying ? [self accent] : [NSColor colorWithCalibratedWhite:0.55 alpha:1]];   // blue=playing, dim=paused
@@ -899,7 +899,7 @@ static int viewCount(TileType t) {
     CGFloat iconW = 20;
     if (t->type == TBRIGHT) { _activeSlider = TBRIGHT; _sliding = YES; [self.actionDelegate barSetBrightness:[self sliderValueFor:t at:p]]; }
     else if (t->type == TVOL && p.x >= t->rect.origin.x + iconW) { _activeSlider = TVOL; _sliding = YES; [self.actionDelegate barSetVolume:[self sliderValueFor:t at:p]]; }
-    else if (t->type == TMEDIA && p.x >= t->rect.origin.x + 4 + 3 * (22 + 2)) {   // scrubber region → seek (drag, commit on release)
+    else if (t->type == TMEDIA && p.x >= t->rect.origin.x + 4 + 3 * (22 + 6)) {   // scrubber region → seek (drag, commit on release)
         _activeSlider = TMEDIA; _sliding = YES; _mediaSeekFrac = [self mediaSeekFracFor:t at:p];
     }
     else { [self fireTap:t at:p]; }   // fire on press — reliable
@@ -907,7 +907,7 @@ static int viewCount(TileType t) {
 
 // Fraction along the now-playing scrubber for a point (matches the bar drawn in drawTile TMEDIA).
 - (float)mediaSeekFracFor:(Tile *)t at:(NSPoint)p {
-    CGFloat x0 = t->rect.origin.x + 4, bs = 22, gap = 2;
+    CGFloat x0 = t->rect.origin.x + 4, bs = 22, gap = 6;
     CGFloat tx = x0 + 3 * (bs + gap) + 4, tw = NSMaxX(t->rect) - tx - 4;
     CGFloat bx = tx + 26, bw = tw - 52;
     return bw > 0 ? (float)MAX(0, MIN(1, (p.x - bx) / bw)) : 0;
@@ -1046,7 +1046,7 @@ static int viewCount(TileType t) {
         case TSC_ACTIVITY:[d barRunShortcut:@"activity"]; break;
         case TSC_REMIND:  [d barRunShortcut:@"newreminder"]; break;
         case TMUTE:       [d barToggleMute]; break;
-        case TMEDIA: { CGFloat x0 = t->rect.origin.x + 4, bs = 22, gap = 2;
+        case TMEDIA: { CGFloat x0 = t->rect.origin.x + 4, bs = 22, gap = 6;
             if (p.x < x0 + bs) [d barMediaPrev];
             else if (p.x < x0 + 2 * (bs + gap)) [d barMediaPlayPause];
             else if (p.x < x0 + 3 * (bs + gap)) [d barMediaNext];

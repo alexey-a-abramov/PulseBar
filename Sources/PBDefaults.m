@@ -23,6 +23,8 @@ NSString * const PBKeyAutoModeEnabled = @"autoModeEnabled";
 NSString * const PBKeyAutoModeRules   = @"autoModeRules";
 NSString * const PBKeyAgentSessionTimeout = @"agentSessionTimeoutMin";
 NSString * const PBKeyAgentModel  = @"agentModel";
+NSString * const PBKeyShortcutPeekMod    = @"shortcutPeekMod";    // 0=⌃ 1=⌥ 2=⌘ 3=Off
+NSString * const PBKeyShortcutOverlayMod = @"shortcutOverlayMod"; // 0=⌃ 1=⌥ 2=⌘ 3=Off
 
 const NSInteger PBDefaultWorkMinutes          = 25;
 const NSInteger PBDefaultBreakMinutes         = 5;

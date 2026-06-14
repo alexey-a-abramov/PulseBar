@@ -47,6 +47,11 @@
 - (void)settingsSetAgentTimeoutMinutes:(NSInteger)minutes;
 - (void)settingsEditLayout;
 - (void)settingsQuit;
+// Shortcut modifier assignments (0=⌃ Control · 1=⌥ Option · 2=⌘ Command · 3=Off)
+- (NSInteger)settingsShortcutPeekMod;
+- (void)settingsSetShortcutPeekMod:(NSInteger)mod;
+- (NSInteger)settingsShortcutOverlayMod;
+- (void)settingsSetShortcutOverlayMod:(NSInteger)mod;
 @end
 
 @interface SettingsWindowController : NSWindowController

@@ -9,6 +9,14 @@
     NSEventModifierFlags _prev;
 }
 
+- (instancetype)init {
+    if ((self = [super init])) {
+        _peekMask    = NSEventModifierFlagControl;
+        _overlayMask = NSEventModifierFlagOption;
+    }
+    return self;
+}
+
 - (BOOL)enable {
     if (!AXIsProcessTrusted())
         AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)@{ (__bridge id)kAXTrustedCheckOptionPrompt: @YES });
@@ -29,14 +37,20 @@
     [self.delegate modifierMonitorDisengageControl];
 }
 
-// Debounced (~0.3s) so quick ⌃-/⌥-shortcuts don't trigger; only a deliberate hold does.
-// ⌃ (Control) is a *momentary* modifier: engage on hold, disengage on release.
+// Debounced (~0.3s) so quick modifier-shortcuts don't trigger; only a deliberate hold does.
+// Peek is momentary: engage on hold, disengage on release.
+// When both masks are equal, peek takes priority (overlay is suppressed).
 - (void)flagsChanged:(NSEventModifierFlags)flags {
-    BOOL ctlNow = (flags & NSEventModifierFlagControl) != 0, ctlWas = (_prev & NSEventModifierFlagControl) != 0;
-    BOOL optNow = (flags & NSEventModifierFlagOption)  != 0, optWas = (_prev & NSEventModifierFlagOption)  != 0;
+    NSEventModifierFlags pm = _peekMask, om = _overlayMask;
+    BOOL sameKey = (pm && om && pm == om);
+
+    BOOL ctlNow = pm ? ((flags & pm) != 0) : NO, ctlWas = pm ? ((_prev & pm) != 0) : NO;
+    BOOL optNow = (om && !sameKey) ? ((flags & om) != 0) : NO;
+    BOOL optWas = (om && !sameKey) ? ((_prev & om) != 0) : NO;
     _prev = flags;
-    if (optNow && !optWas) [self performSelector:@selector(fireOption) withObject:nil afterDelay:0.30];
-    if (!optNow && optWas) { [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(fireOption) object:nil]; [self.delegate modifierMonitorDisengageOption]; }
+
+    if (optNow && !optWas) [self performSelector:@selector(fireOption)  withObject:nil afterDelay:0.30];
+    if (!optNow && optWas) { [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(fireOption)  object:nil]; [self.delegate modifierMonitorDisengageOption]; }
     if (ctlNow && !ctlWas) [self performSelector:@selector(fireControl) withObject:nil afterDelay:0.30];
     if (!ctlNow && ctlWas) { [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(fireControl) object:nil]; [self.delegate modifierMonitorDisengageControl]; }
 }

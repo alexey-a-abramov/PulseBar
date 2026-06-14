@@ -51,7 +51,6 @@
     double      _sessionStart, _lastActive;   // active working-session tracking (system input idle)
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
-    NSMenuItem *_fnItem;
     NSMenuItem *_collapseTabsItem;
     NSMenu *_densityMenu;
 }
@@ -101,9 +100,7 @@
         if (![ud objectForKey:PBKeyMirror]) [ud setBool:YES forKey:PBKeyMirror];     // show desktop mirror
         if ([ud boolForKey:PBKeyMirror]) [self showMirror];
         if (![ud objectForKey:PBKeyModifiers]) [ud setBool:YES forKey:PBKeyModifiers];   // ⌘ recent · ⌥ app
-        BOOL mods = [ud boolForKey:PBKeyModifiers];
-        _fnItem.state = mods ? NSControlStateValueOn : NSControlStateValueOff;
-        if (mods) [self enableModifiers];
+        if ([ud boolForKey:PBKeyModifiers]) [self enableModifiers];
     }
 
     [self registerSleepWake];
@@ -217,25 +214,18 @@
     NSString *header = [NSString stringWithFormat:@"PulseBar — system monitor · v%@ (build %@)", ver, bld];
     [[menu addItemWithTitle:header action:nil keyEquivalent:@""] setEnabled:NO];
 
-    // Primary action
+    // Primary
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Ask the Agent…"             action:@selector(barOpenAgent)     keyEquivalent:@"a"];
 
-    // Side-notes — view the history, or export it
-    NSMenuItem *notes = [[NSMenuItem alloc] initWithTitle:@"Side-Notes" action:nil keyEquivalent:@""];
-    NSMenu *notesSub = [[NSMenu alloc] init];
-    [notesSub addItemWithTitle:@"View Side-Notes…"       action:@selector(viewSideNotes)    keyEquivalent:@""];
-    [notesSub addItemWithTitle:@"Export as CSV…"         action:@selector(exportSideNotes)  keyEquivalent:@""];
-    for (NSMenuItem *it in notesSub.itemArray) it.target = self;
-    notes.submenu = notesSub;
-    [menu addItem:notes];
-
-    // Configuration
+    // Settings & layout
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Settings…"                  action:@selector(showSettings)     keyEquivalent:@","];
     [menu addItemWithTitle:@"Customize Layout…"          action:@selector(showLayoutEditor) keyEquivalent:@""];
+    [menu addItemWithTitle:@"Shortcuts…"                 action:@selector(showShortcutsTab) keyEquivalent:@""];
 
-    // Density — Auto adapts to tight space; Full/Compact pin the look.
+    // Display options
+    [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *density = [[NSMenuItem alloc] initWithTitle:@"Density" action:nil keyEquivalent:@""];
     NSMenu *densitySub = [[NSMenu alloc] init];
     [densitySub addItemWithTitle:@"Auto (adapt to space)" action:@selector(pickDensity:) keyEquivalent:@""].tag = PBDensityAuto;
@@ -250,9 +240,16 @@
     _collapseTabsItem.target = self;
     _collapseTabsItem.state = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyTabsCollapsed] ? NSControlStateValueOn : NSControlStateValueOff;
 
-    _fnItem = [menu addItemWithTitle:@"Modifier Shortcuts  (⌃ peek · ⌥ app)" action:@selector(toggleModifiers) keyEquivalent:@""];
+    // Utility
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *notes = [[NSMenuItem alloc] initWithTitle:@"Side-Notes" action:nil keyEquivalent:@""];
+    NSMenu *notesSub = [[NSMenu alloc] init];
+    [notesSub addItemWithTitle:@"View Side-Notes…"       action:@selector(viewSideNotes)    keyEquivalent:@""];
+    [notesSub addItemWithTitle:@"Export as CSV…"         action:@selector(exportSideNotes)  keyEquivalent:@""];
+    for (NSMenuItem *it in notesSub.itemArray) it.target = self;
+    notes.submenu = notesSub;
+    [menu addItem:notes];
 
-    // Diagnostics submenu (mirror · re-take · log)
     NSMenuItem *diag = [[NSMenuItem alloc] initWithTitle:@"Diagnostics" action:nil keyEquivalent:@""];
     NSMenu *diagSub = [[NSMenu alloc] init];
     [diagSub addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror)     keyEquivalent:@"m"];
@@ -566,8 +563,18 @@
 
 #pragma mark - modifier shortcuts (⌘ → recent mode · ⌥ → app overlay)
 
+- (void)applyShortcutMasks {
+    static NSEventModifierFlags const kMasks[] = {
+        NSEventModifierFlagControl, NSEventModifierFlagOption, NSEventModifierFlagCommand, 0
+    };
+    NSInteger pi = PBDefaultsInteger(PBKeyShortcutPeekMod, 0);
+    NSInteger oi = PBDefaultsInteger(PBKeyShortcutOverlayMod, 1);
+    _modMonitor.peekMask    = kMasks[MAX(0, MIN(3, pi))];
+    _modMonitor.overlayMask = kMasks[MAX(0, MIN(3, oi))];
+}
 - (void)enableModifiers {
     if (!_modMonitor) { _modMonitor = [PBModifierMonitor new]; _modMonitor.delegate = self; }
+    [self applyShortcutMasks];
     BOOL trusted = [_modMonitor enable];
     PBLog(@"modifier shortcuts enabled (Accessibility %@)", trusted ? @"granted" : @"PENDING — grant in System Settings");
 }
@@ -589,12 +596,6 @@
     if (!self.barView.appOverlay) return;
     [self broadcast:^(BarView *b){ b.appOverlay = NO; }];
 }
-- (void)toggleModifiers {
-    BOOL on = ![NSUserDefaults.standardUserDefaults boolForKey:PBKeyModifiers];
-    [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyModifiers];
-    _fnItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
-    if (on) [self enableModifiers]; else [self disableModifiers];
-}
 - (void)barAppAction:(NSString *)a {
     NSRunningApplication *app = [NSWorkspace sharedWorkspace].frontmostApplication;
     if ([a isEqualToString:@"hide"]) [app hide];
@@ -605,6 +606,10 @@
 - (void)showSettings {
     if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
     [self.settings present];
+}
+- (void)showShortcutsTab {
+    if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
+    [self.settings presentTab:@"shortcuts"];
 }
 - (void)showLayoutEditor {
     if (!self.layoutEditor) self.layoutEditor = [LayoutEditorWindowController new];
@@ -642,8 +647,17 @@
 - (BOOL)settingsModifiersEnabled { return [NSUserDefaults.standardUserDefaults boolForKey:PBKeyModifiers]; }
 - (void)settingsSetModifiers:(BOOL)on {
     [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyModifiers];
-    _fnItem.state = on ? NSControlStateValueOn : NSControlStateValueOff;
     if (on) [self enableModifiers]; else [self disableModifiers];
+}
+- (NSInteger)settingsShortcutPeekMod { return PBDefaultsInteger(PBKeyShortcutPeekMod, 0); }
+- (void)settingsSetShortcutPeekMod:(NSInteger)mod {
+    [NSUserDefaults.standardUserDefaults setInteger:mod forKey:PBKeyShortcutPeekMod];
+    if (_modMonitor) [self applyShortcutMasks];
+}
+- (NSInteger)settingsShortcutOverlayMod { return PBDefaultsInteger(PBKeyShortcutOverlayMod, 1); }
+- (void)settingsSetShortcutOverlayMod:(NSInteger)mod {
+    [NSUserDefaults.standardUserDefaults setInteger:mod forKey:PBKeyShortcutOverlayMod];
+    if (_modMonitor) [self applyShortcutMasks];
 }
 - (BOOL)settingsAdaptiveLength { return self.pomo.adaptiveLength; }
 - (void)settingsSetAdaptive:(BOOL)on {

@@ -19,7 +19,7 @@
 
 @implementation SettingsWindowController {
     __weak id<SettingsDelegate> _delegate;
-    NSButton   *_fullBar, *_login, *_topProc, *_mirror, *_mods, *_adaptive;
+    NSButton   *_fullBar, *_login, *_topProc, *_mirror, *_adaptive;
     NSStepper  *_workStep, *_breakStep, *_breakReminderStep;
     NSTextField *_workVal, *_breakVal, *_breakReminderVal, *_mediaField, *_notesCount;
     NSTextView *_notesView;
@@ -38,6 +38,10 @@
     NSProgressIndicator *_dlProgress;
     NSStepper  *_agentTimeoutStep; NSTextField *_agentTimeoutVal;
     PBOllama   *_pull;
+    // Shortcuts tab
+    NSButton   *_shortcutsEnable;
+    NSSegmentedControl *_peekSeg, *_overlaySeg;
+    NSTextField *_shortcutConflictLabel;
 }
 
 static const CGFloat kW = 470, kH = 452;
@@ -86,6 +90,7 @@ static NSTextField *help(NSString *s, NSRect f) {
 
     [_tabs addTabViewItem:[self generalTab]];
     [_tabs addTabViewItem:[self layoutTab]];
+    [_tabs addTabViewItem:[self shortcutsTab]];
     [_tabs addTabViewItem:[self modesTab]];
     [_tabs addTabViewItem:[self focusTab]];
     [_tabs addTabViewItem:[self agentTab]];
@@ -117,25 +122,19 @@ static NSTextField *help(NSString *s, NSRect f) {
                                    target:self action:@selector(toggleMirror:)];
     _mirror.frame = NSMakeRect(20, top - 106, kW - 60, 20); [c addSubview:_mirror];
 
-    _mods = [NSButton checkboxWithTitle:@"Modifier shortcuts  (⌃ peek previous mode · ⌥ app actions)"
-                                 target:self action:@selector(toggleMods:)];
-    _mods.frame = NSMakeRect(20, top - 128, kW - 60, 20); [c addSubview:_mods];
-    [c addSubview:help(@"Hold ⌃ to glance at your last mode (release to snap back); hold ⌥\nfor quick hide/quit actions on the frontmost app.",
-                       NSMakeRect(40, top - 164, kW - 80, 32))];
-
-    [self section:@"System" in:c at:top - 196];
+    [self section:@"System" in:c at:top - 138];
     _topProc = [NSButton checkboxWithTitle:@"Show top CPU process (uses a little more CPU)"
                                     target:self action:@selector(toggleTopProc:)];
-    _topProc.frame = NSMakeRect(20, top - 222, kW - 60, 20); [c addSubview:_topProc];
+    _topProc.frame = NSMakeRect(20, top - 164, kW - 60, 20); [c addSubview:_topProc];
     _login = [NSButton checkboxWithTitle:@"Start PulseBar at login" target:self action:@selector(toggleLogin:)];
-    _login.frame = NSMakeRect(20, top - 244, kW - 60, 20); [c addSubview:_login];
+    _login.frame = NSMakeRect(20, top - 186, kW - 60, 20); [c addSubview:_login];
 
-    [self section:@"Media" in:c at:top - 276];
-    [c addSubview:label(@"Play/pause target", NSMakeRect(20, top - 302, 120, 18), 11, NO)];
-    _mediaField = [[NSTextField alloc] initWithFrame:NSMakeRect(150, top - 304, 160, 22)];
+    [self section:@"Media" in:c at:top - 218];
+    [c addSubview:label(@"Play/pause target", NSMakeRect(20, top - 244, 120, 18), 11, NO)];
+    _mediaField = [[NSTextField alloc] initWithFrame:NSMakeRect(150, top - 246, 160, 22)];
     _mediaField.placeholderString = @"Spotify"; _mediaField.delegate = self; [c addSubview:_mediaField];
     [c addSubview:help(@"e.g. Spotify, Music, TV — the app the bar controls in Media mode.",
-                       NSMakeRect(20, top - 326, kW - 40, 16))];
+                       NSMakeRect(20, top - 268, kW - 40, 16))];
     return it;
 }
 
@@ -194,6 +193,78 @@ static NSTextField *help(NSString *s, NSRect f) {
     [c addSubview:help(@"Tip: long-press the active mode pill on the bar to drag-reorder tiles in place.",
                        NSMakeRect(20, top - 370, W - 40, 16))];
     return it;
+}
+
+// Configure which modifier key triggers peek / overlay, with conflict detection.
+- (NSTabViewItem *)shortcutsTab {
+    NSTabViewItem *it = [[NSTabViewItem alloc] initWithIdentifier:@"shortcuts"];
+    it.label = @"Shortcuts";
+    NSView *c = [self pageView]; it.view = c;
+    CGFloat top = c.frame.size.height, W = c.frame.size.width;
+
+    [self section:@"Modifier shortcuts" in:c at:top - 22];
+    _shortcutsEnable = [NSButton checkboxWithTitle:@"Enable modifier-key shortcuts  (requires Accessibility permission)"
+                                            target:self action:@selector(shortcutsEnableChanged:)];
+    _shortcutsEnable.frame = NSMakeRect(20, top - 52, W - 40, 20); [c addSubview:_shortcutsEnable];
+    [c addSubview:help(@"Hold a modifier key to trigger a bar action from any app. macOS will prompt\nfor Accessibility on first use; grant it in System Settings → Privacy.",
+                       NSMakeRect(40, top - 88, W - 60, 32))];
+
+    NSArray *modLabels = @[@"⌃  Control", @"⌥  Option", @"⌘  Command", @"Off"];
+
+    [self section:@"Peek previous mode" in:c at:top - 116];
+    [c addSubview:help(@"Hold this key to glance at your last mode; release to snap back.", NSMakeRect(20, top - 152, W - 40, 16))];
+    _peekSeg = [NSSegmentedControl segmentedControlWithLabels:modLabels
+                                                 trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                       target:self action:@selector(peekModChanged:)];
+    _peekSeg.frame = NSMakeRect(20, top - 178, 360, 24); [c addSubview:_peekSeg];
+
+    [self section:@"App actions overlay" in:c at:top - 210];
+    [c addSubview:help(@"Hold this key for quick hide/quit actions on the frontmost app.", NSMakeRect(20, top - 246, W - 40, 16))];
+    _overlaySeg = [NSSegmentedControl segmentedControlWithLabels:modLabels
+                                                    trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                          target:self action:@selector(overlayModChanged:)];
+    _overlaySeg.frame = NSMakeRect(20, top - 272, 360, 24); [c addSubview:_overlaySeg];
+
+    // Conflict / warning label — shown only when a conflict or ⌘ is detected.
+    _shortcutConflictLabel = [NSTextField labelWithString:@""];
+    _shortcutConflictLabel.frame = NSMakeRect(20, top - 308, W - 40, 32);
+    _shortcutConflictLabel.font = [NSFont systemFontOfSize:11];
+    _shortcutConflictLabel.textColor = [NSColor systemRedColor];
+    _shortcutConflictLabel.maximumNumberOfLines = 2;
+    _shortcutConflictLabel.hidden = YES;
+    [c addSubview:_shortcutConflictLabel];
+
+    [self section:@"Menu keyboard shortcuts" in:c at:top - 330];
+    [c addSubview:help(@"These are fixed macOS menu-bar shortcuts.", NSMakeRect(20, top - 350, W - 40, 16))];
+    NSArray *refs = @[@"⌘ A  —  Ask the Agent…", @"⌘ ,  —  Settings…", @"⌘ Q  —  Quit PulseBar"];
+    CGFloat ry = top - 372;
+    for (NSString *r in refs) {
+        [c addSubview:label(r, NSMakeRect(20, ry, W - 40, 16), 11, NO)];
+        ry -= 18;
+    }
+    return it;
+}
+
+- (void)shortcutsEnableChanged:(NSButton *)b {
+    [_delegate settingsSetModifiers:(b.state == NSControlStateValueOn)];
+}
+- (void)peekModChanged:(NSSegmentedControl *)s {
+    [_delegate settingsSetShortcutPeekMod:s.selectedSegment];
+    [self updateShortcutConflict];
+}
+- (void)overlayModChanged:(NSSegmentedControl *)s {
+    [_delegate settingsSetShortcutOverlayMod:s.selectedSegment];
+    [self updateShortcutConflict];
+}
+- (void)updateShortcutConflict {
+    NSInteger pi = _peekSeg.selectedSegment, oi = _overlaySeg.selectedSegment;
+    NSString *msg = nil;
+    if (pi != 3 && oi != 3 && pi == oi)
+        msg = @"⚠️  Both shortcuts share the same modifier — they'll both fire at once. Pick different keys.";
+    else if (pi == 2 || oi == 2)
+        msg = @"⚠️  ⌘ Command is heavily used by macOS; system shortcuts may interfere. Consider ⌃ or ⌥ instead.";
+    _shortcutConflictLabel.stringValue = msg ?: @"";
+    _shortcutConflictLabel.hidden = (msg == nil);
 }
 
 // Auto-switch the bar's mode per frontmost app (off by default).
@@ -442,8 +513,11 @@ static NSTextField *help(NSString *s, NSRect f) {
 - (void)syncFromDelegate {
     _fullBar.state  = [_delegate settingsFullBarEnabled]   ? NSControlStateValueOn : NSControlStateValueOff;
     _mirror.state   = [_delegate settingsMirrorVisible]    ? NSControlStateValueOn : NSControlStateValueOff;
-    _mods.state     = [_delegate settingsModifiersEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
     _login.state    = [_delegate settingsLoginEnabled]     ? NSControlStateValueOn : NSControlStateValueOff;
+    _shortcutsEnable.state = [_delegate settingsModifiersEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
+    _peekSeg.selectedSegment    = [_delegate settingsShortcutPeekMod];
+    _overlaySeg.selectedSegment = [_delegate settingsShortcutOverlayMod];
+    [self updateShortcutConflict];
     _topProc.state  = [_delegate settingsTopProcEnabled]   ? NSControlStateValueOn : NSControlStateValueOff;
     _adaptive.state = [_delegate settingsAdaptiveLength]   ? NSControlStateValueOn : NSControlStateValueOff;
     NSInteger wm = [_delegate settingsWorkMinutes], bm = [_delegate settingsBreakMinutes], rm = [_delegate settingsBreakReminderMinutes];
@@ -517,7 +591,6 @@ static NSTextField *help(NSString *s, NSRect f) {
 }
 - (void)toggleFullBar:(NSButton *)b { [_delegate settingsSetFullBar:(b.state == NSControlStateValueOn)]; }
 - (void)toggleMirror:(NSButton *)b  { [_delegate settingsSetMirror:(b.state == NSControlStateValueOn)]; }
-- (void)toggleMods:(NSButton *)b    { [_delegate settingsSetModifiers:(b.state == NSControlStateValueOn)]; }
 - (void)toggleLogin:(NSButton *)b   { [_delegate settingsSetLogin:(b.state == NSControlStateValueOn)]; [self syncFromDelegate]; }
 - (void)toggleTopProc:(NSButton *)b { [_delegate settingsSetTopProc:(b.state == NSControlStateValueOn)]; }
 - (void)toggleAdaptive:(NSButton *)b { [_delegate settingsSetAdaptive:(b.state == NSControlStateValueOn)]; }

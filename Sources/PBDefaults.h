@@ -25,6 +25,8 @@ extern NSString * const PBKeyAutoModeEnabled; // BOOL — auto-switch the bar's 
 extern NSString * const PBKeyAutoModeRules;   // NSArray of {bundleID,name,mode} — per-app → mode rules
 extern NSString * const PBKeyAgentSessionTimeout; // NSInteger minutes — start a fresh agent dialogue after this much inactivity (0 = never)
 extern NSString * const PBKeyAgentModel;   // NSString — active Ollama model tag (e.g. "gemma4:12b"); default "gemma3:4b"
+extern NSString * const PBKeyShortcutPeekMod;    // NSInteger — 0 ⌃ Control · 1 ⌥ Option · 2 ⌘ Command · 3 Off (default 0)
+extern NSString * const PBKeyShortcutOverlayMod; // NSInteger — 0 ⌃ Control · 1 ⌥ Option · 2 ⌘ Command · 3 Off (default 1)
 
 // Default values — kept here so they aren't re-typed as literals across the app.
 extern const NSInteger PBDefaultWorkMinutes;          // 25
