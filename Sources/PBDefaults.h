@@ -27,6 +27,7 @@ extern NSString * const PBKeyAgentSessionTimeout; // NSInteger minutes — start
 extern NSString * const PBKeyAgentModel;   // NSString — active Ollama model tag (e.g. "gemma4:12b"); default "gemma3:4b"
 extern NSString * const PBKeyShortcutPeekMod;    // NSInteger — 0 ⌃ Control · 1 ⌥ Option · 2 ⌘ Command · 3 Off (default 0)
 extern NSString * const PBKeyShortcutOverlayMod; // NSInteger — 0 ⌃ Control · 1 ⌥ Option · 2 ⌘ Command · 3 Off (default 1)
+extern NSString * const PBKeyLayoutProfile;      // NSInteger PBLayoutProfile — 0 Default · 1 Minimum · 2 Custom (default Default on first run)
 
 // Default values — kept here so they aren't re-typed as literals across the app.
 extern const NSInteger PBDefaultWorkMinutes;          // 25
@@ -35,6 +36,7 @@ extern const NSInteger PBDefaultBreakReminderMinutes; // 80
 extern const NSInteger PBDefaultSafeLeft;             // 0
 extern const NSInteger PBDefaultSafeRight;            // 110
 extern const NSInteger PBDefaultAgentSessionTimeoutMin; // 5 (0 = never reset the dialogue)
+extern const NSInteger PBCloseBoxReserve;             // 64 — px the Touch Bar ✕ close box occupies on the left; reserved by every layout profile
 
 // Read a defaults value, returning `fallback` when the key has never been set.
 NSInteger PBDefaultsInteger(NSString *key, NSInteger fallback);

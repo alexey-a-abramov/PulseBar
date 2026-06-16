@@ -35,6 +35,14 @@
 - (void)settingsSetDensity:(NSInteger)d;
 - (BOOL)settingsTabsCollapsed;            // collapse the mode-tab strip to the active pill
 - (void)settingsSetTabsCollapsed:(BOOL)collapsed;
+// Layout profile quick-switch (0 Default · 1 Minimum · 2 Custom). Setting Default/
+// Minimum applies that profile's density+tabs+safe-area bundle; Custom is read-only
+// (reported when the knobs have been hand-tuned away from either preset).
+- (NSInteger)settingsLayoutProfile;
+- (void)settingsSetLayoutProfile:(NSInteger)profile;
+// Diagnostics actions (moved out of the status menu).
+- (void)settingsReattachTouchBar;         // re-claim the bar (evict Control Strip)
+- (void)settingsOpenLog;
 // Per-app auto-mode switch
 - (BOOL)settingsAutoModeEnabled;
 - (void)settingsSetAutoModeEnabled:(BOOL)on;
@@ -57,5 +65,6 @@
 @interface SettingsWindowController : NSWindowController
 - (instancetype)initWithDelegate:(id<SettingsDelegate>)delegate;
 - (void)present;
-- (void)presentTab:(NSString *)identifier;   // "general" | "focus" | "notes"
+- (void)presentTab:(NSString *)identifier;   // general · layout · shortcuts · modes · focus · agent · diagnostics · notes
+- (void)syncIfVisible;                        // re-pull values if the window is on-screen (external change)
 @end

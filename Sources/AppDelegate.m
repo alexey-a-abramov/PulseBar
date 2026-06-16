@@ -51,8 +51,21 @@
     double      _sessionStart, _lastActive;   // active working-session tracking (system input idle)
     PBModifierMonitor *_modMonitor;
     PBAgentCoordinator *_agentCoord;
-    NSMenuItem *_collapseTabsItem;
-    NSMenu *_densityMenu;
+    NSMenuItem *_profileDefaultItem, *_profileMinimumItem;   // Layout submenu radio items
+    BOOL _applyingProfile;   // suppresses the "→ Custom" reclassification while a profile is being applied
+}
+
+// A layout profile is a one-tap bundle of these four knobs. Every profile reserves
+// PBCloseBoxReserve px on the LEFT for the Touch Bar ✕ so the agent orb stays visible.
+typedef struct { PBDensity density; BOOL tabsCollapsed; NSInteger safeLeft; NSInteger safeRight; } PBProfileSpec;
+static PBProfileSpec profileSpec(PBLayoutProfile p) {
+    switch (p) {
+        case PBLayoutProfileMinimum:   // icon-only + collapsed tabs → maximum room for tiles
+            return (PBProfileSpec){ PBDensityCompact, YES, PBCloseBoxReserve, PBDefaultSafeRight };
+        case PBLayoutProfileDefault:   // the everyday rich layout
+        default:
+            return (PBProfileSpec){ PBDensityAuto,    NO,  PBCloseBoxReserve, PBDefaultSafeRight };
+    }
 }
 
 #pragma mark - lifecycle
@@ -101,6 +114,11 @@
         if ([ud boolForKey:PBKeyMirror]) [self showMirror];
         if (![ud objectForKey:PBKeyModifiers]) [ud setBool:YES forKey:PBKeyModifiers];   // ⌘ recent · ⌥ app
         if ([ud boolForKey:PBKeyModifiers]) [self enableModifiers];
+        // First run of the profile era: adopt the ✕-aware Default layout so the agent
+        // orb is visible out of the box. Existing custom fit/density is preserved once
+        // PBKeyLayoutProfile exists (the user's own edits flip it to Custom).
+        if (![ud objectForKey:PBKeyLayoutProfile]) [self applyLayoutProfile:PBLayoutProfileDefault];
+        else [self syncLayoutProfileMenu];
     }
 
     [self registerSleepWake];
@@ -214,64 +232,70 @@
     NSString *header = [NSString stringWithFormat:@"PulseBar — system monitor · v%@ (build %@)", ver, bld];
     [[menu addItemWithTitle:header action:nil keyEquivalent:@""] setEnabled:NO];
 
-    // Primary
+    // Primary — talk to the agent.
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Ask the Agent…"             action:@selector(barOpenAgent)     keyEquivalent:@"a"];
 
-    // Settings & layout
+    // Quick controls — switch layout, lock the screen. Everything else is in Settings.
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *layout = [[NSMenuItem alloc] initWithTitle:@"Layout" action:nil keyEquivalent:@""];
+    NSMenu *layoutSub = [[NSMenu alloc] init];
+    _profileDefaultItem = [layoutSub addItemWithTitle:@"Default" action:@selector(pickLayoutProfile:) keyEquivalent:@""];
+    _profileDefaultItem.tag = PBLayoutProfileDefault;
+    _profileMinimumItem = [layoutSub addItemWithTitle:@"Minimum" action:@selector(pickLayoutProfile:) keyEquivalent:@""];
+    _profileMinimumItem.tag = PBLayoutProfileMinimum;
+    [layoutSub addItem:[NSMenuItem separatorItem]];
+    [layoutSub addItemWithTitle:@"Customize Layout…"     action:@selector(showLayoutEditor) keyEquivalent:@""];
+    for (NSMenuItem *it in layoutSub.itemArray) it.target = self;
+    layout.submenu = layoutSub;
+    [menu addItem:layout];
+
+    [menu addItemWithTitle:@"Lock Screen"                action:@selector(lockScreen)       keyEquivalent:@""];
+
+    // Settings — the home for everything else (shortcuts, fit, auto-switch, notes, diagnostics…).
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Settings…"                  action:@selector(showSettings)     keyEquivalent:@","];
-    [menu addItemWithTitle:@"Customize Layout…"          action:@selector(showLayoutEditor) keyEquivalent:@""];
-    [menu addItemWithTitle:@"Shortcuts…"                 action:@selector(showShortcutsTab) keyEquivalent:@""];
-
-    // Display options
-    [menu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *density = [[NSMenuItem alloc] initWithTitle:@"Density" action:nil keyEquivalent:@""];
-    NSMenu *densitySub = [[NSMenu alloc] init];
-    [densitySub addItemWithTitle:@"Auto (adapt to space)" action:@selector(pickDensity:) keyEquivalent:@""].tag = PBDensityAuto;
-    [densitySub addItemWithTitle:@"Full"                  action:@selector(pickDensity:) keyEquivalent:@""].tag = PBDensityFull;
-    [densitySub addItemWithTitle:@"Compact (icon-only)"   action:@selector(pickDensity:) keyEquivalent:@""].tag = PBDensityCompact;
-    for (NSMenuItem *it in densitySub.itemArray) it.target = self;
-    density.submenu = densitySub;
-    [menu addItem:density];
-    _densityMenu = densitySub;
-
-    _collapseTabsItem = [menu addItemWithTitle:@"Collapse Mode Tabs" action:@selector(toggleTabsCollapsed:) keyEquivalent:@""];
-    _collapseTabsItem.target = self;
-    _collapseTabsItem.state = [NSUserDefaults.standardUserDefaults boolForKey:PBKeyTabsCollapsed] ? NSControlStateValueOn : NSControlStateValueOff;
-
-    // Utility
-    [menu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *notes = [[NSMenuItem alloc] initWithTitle:@"Side-Notes" action:nil keyEquivalent:@""];
-    NSMenu *notesSub = [[NSMenu alloc] init];
-    [notesSub addItemWithTitle:@"View Side-Notes…"       action:@selector(viewSideNotes)    keyEquivalent:@""];
-    [notesSub addItemWithTitle:@"Export as CSV…"         action:@selector(exportSideNotes)  keyEquivalent:@""];
-    for (NSMenuItem *it in notesSub.itemArray) it.target = self;
-    notes.submenu = notesSub;
-    [menu addItem:notes];
-
-    NSMenuItem *diag = [[NSMenuItem alloc] initWithTitle:@"Diagnostics" action:nil keyEquivalent:@""];
-    NSMenu *diagSub = [[NSMenu alloc] init];
-    [diagSub addItemWithTitle:@"Show / Hide Desktop Mirror" action:@selector(toggleMirror)     keyEquivalent:@"m"];
-    [diagSub addItemWithTitle:@"Re-take Over the Touch Bar" action:@selector(reattachFully)    keyEquivalent:@"r"];
-    [diagSub addItemWithTitle:@"Open Log"                   action:@selector(openLog)          keyEquivalent:@"l"];
-    for (NSMenuItem *it in diagSub.itemArray) it.target = self;
-    diag.submenu = diagSub;
-    [menu addItem:diag];
 
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Quit PulseBar"              action:@selector(quit)             keyEquivalent:@"q"];
     for (NSMenuItem *it in menu.itemArray) if (it.action) it.target = self;
-    [self syncDensityMenu];
+    [self syncLayoutProfileMenu];
     self.statusItem.menu = menu;
 }
 
-// Radio-check the active density in the menu.
-- (void)syncDensityMenu {
-    for (NSMenuItem *it in _densityMenu.itemArray)
-        it.state = (it.tag == self.barView.density) ? NSControlStateValueOn : NSControlStateValueOff;
+// Radio-check the active profile in the Layout submenu (neither, when Custom).
+- (void)syncLayoutProfileMenu {
+    PBLayoutProfile p = (PBLayoutProfile)PBDefaultsInteger(PBKeyLayoutProfile, PBLayoutProfileDefault);
+    _profileDefaultItem.state = (p == PBLayoutProfileDefault) ? NSControlStateValueOn : NSControlStateValueOff;
+    _profileMinimumItem.state = (p == PBLayoutProfileMinimum) ? NSControlStateValueOn : NSControlStateValueOff;
 }
-- (void)pickDensity:(NSMenuItem *)item { [self setDensity:(PBDensity)item.tag]; }
+- (void)pickLayoutProfile:(NSMenuItem *)item { [self applyLayoutProfile:(PBLayoutProfile)item.tag]; }
+
+// Apply a profile's density+tabs+safe-area bundle atomically, persist which profile
+// is active, and refresh the menu + any open Settings window. The _applyingProfile
+// guard keeps the individual setters from reclassifying this as a "Custom" edit.
+- (void)applyLayoutProfile:(PBLayoutProfile)p {
+    if (p == PBLayoutProfileCustom) return;   // Custom is a reported state, not an applyable one
+    PBProfileSpec s = profileSpec(p);
+    _applyingProfile = YES;
+    [self setDensity:s.density];
+    [self setTabsCollapsed:s.tabsCollapsed];
+    [self settingsSetSafeLeft:s.safeLeft];
+    [self settingsSetSafeRight:s.safeRight];
+    _applyingProfile = NO;
+    [NSUserDefaults.standardUserDefaults setInteger:p forKey:PBKeyLayoutProfile];
+    [self syncLayoutProfileMenu];
+    [self.settings syncIfVisible];   // keep an open Settings window in step
+}
+
+// Any manual density/tabs/fit edit means the layout no longer matches a preset.
+- (void)markLayoutProfileCustom {
+    if (_applyingProfile) return;
+    [NSUserDefaults.standardUserDefaults setInteger:PBLayoutProfileCustom forKey:PBKeyLayoutProfile];
+    [self syncLayoutProfileMenu];
+}
+
+- (void)lockScreen { [self barRunShortcut:@"lock"]; }
 
 #pragma mark - desktop mirror (companion window — exact, clickable copy of the bar)
 
@@ -299,22 +323,21 @@
 - (void)toggleMirror { self.mirror.visible ? [self.mirror hide] : [self showMirror]; }
 
 // Compact layout — icon-only active pill + icon-only action tiles. Applies to the
-// live bar and the mirror, persists, and keeps the menu check in sync.
+// live bar and the mirror, persists, and (unless mid-profile) flips to Custom.
 - (void)setDensity:(PBDensity)d {
     [self broadcast:^(BarView *b){ b.density = d; }];
     [NSUserDefaults.standardUserDefaults setInteger:d forKey:PBKeyDensity];
-    [self syncDensityMenu];
+    [self markLayoutProfileCustom];
 }
 
-// Collapse/expand the mode-tab strip (chevron on the bar, the menu item, or
-// Settings → Layout). Applies to both bars, persists, keeps the menu check in sync.
+// Collapse/expand the mode-tab strip (chevron on the bar, or Settings → Layout).
+// Applies to both bars, persists, and (unless mid-profile) flips to Custom.
 - (void)setTabsCollapsed:(BOOL)c {
     [self broadcast:^(BarView *b){ b.tabsCollapsed = c; }];
     [NSUserDefaults.standardUserDefaults setBool:c forKey:PBKeyTabsCollapsed];
-    _collapseTabsItem.state = c ? NSControlStateValueOn : NSControlStateValueOff;
+    [self markLayoutProfileCustom];
 }
 - (void)barSetTabsCollapsed:(BOOL)c { [self setTabsCollapsed:c]; }   // chevron tapped on the bar
-- (void)toggleTabsCollapsed:(id)sender { [self setTabsCollapsed:!self.barView.tabsCollapsed]; }
 
 #pragma mark - Touch Bar attach / detach
 
@@ -525,22 +548,6 @@
 
 - (void)openLog { [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:PBLogFile()]]; }
 
-// Side-notes: open the history (Settings → Notes), or export it to CSV.
-- (void)viewSideNotes {
-    if (!self.settings) self.settings = [[SettingsWindowController alloc] initWithDelegate:self];
-    [self.settings presentTab:@"notes"];
-}
-- (void)exportSideNotes {
-    NSString *path = [PBVoiceNotes exportCSV];
-    if (path) { [[NSWorkspace sharedWorkspace] selectFile:path inFileViewerRootedAtPath:PBLogDirectory()]; }
-    else {
-        NSAlert *a = [NSAlert new];
-        a.messageText = @"No side-notes yet";
-        a.informativeText = @"Hold the NOTE tile in Focus mode and speak to capture a side-note.";
-        [NSApp activateIgnoringOtherApps:YES]; [a runModal];
-    }
-}
-
 #pragma mark - session break reminder (unmutable)
 
 // Lazily build the reminder, wiring its show/hide to the bar + mirror banner.
@@ -676,15 +683,21 @@
 - (void)settingsSetSafeLeft:(CGFloat)px {
     [self broadcast:^(BarView *b){ b.safeAreaLeftInset = px; }];
     [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)lround(px) forKey:PBKeySafeLeft];
+    [self markLayoutProfileCustom];
 }
 - (void)settingsSetSafeRight:(CGFloat)px {
     [self broadcast:^(BarView *b){ b.safeAreaRightInset = px; }];
     [NSUserDefaults.standardUserDefaults setInteger:(NSInteger)lround(px) forKey:PBKeySafeRight];
+    [self markLayoutProfileCustom];
 }
 - (NSInteger)settingsDensity { return self.barView.density; }
 - (void)settingsSetDensity:(NSInteger)d { [self setDensity:(PBDensity)d]; }
 - (BOOL)settingsTabsCollapsed { return self.barView.tabsCollapsed; }
 - (void)settingsSetTabsCollapsed:(BOOL)c { [self setTabsCollapsed:c]; }
+- (NSInteger)settingsLayoutProfile { return PBDefaultsInteger(PBKeyLayoutProfile, PBLayoutProfileDefault); }
+- (void)settingsSetLayoutProfile:(NSInteger)p { [self applyLayoutProfile:(PBLayoutProfile)p]; }
+- (void)settingsReattachTouchBar { [self reattachFully]; }
+- (void)settingsOpenLog { [self openLog]; }
 - (BOOL)settingsAutoModeEnabled { return [NSUserDefaults.standardUserDefaults boolForKey:PBKeyAutoModeEnabled]; }
 - (void)settingsSetAutoModeEnabled:(BOOL)on { [NSUserDefaults.standardUserDefaults setBool:on forKey:PBKeyAutoModeEnabled]; }
 - (NSArray<NSDictionary *> *)settingsAutoModeRules { return [NSUserDefaults.standardUserDefaults arrayForKey:PBKeyAutoModeRules] ?: @[]; }

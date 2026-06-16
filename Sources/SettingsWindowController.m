@@ -42,9 +42,12 @@
     NSButton   *_shortcutsEnable;
     NSSegmentedControl *_peekSeg, *_overlaySeg;
     NSTextField *_shortcutConflictLabel;
+    // Layout tab — profile quick-switch
+    NSSegmentedControl *_profileSeg;
+    NSTextField *_profileHint;
 }
 
-static const CGFloat kW = 470, kH = 452;
+static const CGFloat kW = 470, kH = 500;
 
 - (instancetype)initWithDelegate:(id<SettingsDelegate>)delegate {
     NSWindow *w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, kW, kH)
@@ -94,6 +97,7 @@ static NSTextField *help(NSString *s, NSRect f) {
     [_tabs addTabViewItem:[self modesTab]];
     [_tabs addTabViewItem:[self focusTab]];
     [_tabs addTabViewItem:[self agentTab]];
+    [_tabs addTabViewItem:[self diagnosticsTab]];
     [_tabs addTabViewItem:[self notesTab]];
 
     NSButton *quit = [NSButton buttonWithTitle:@"Quit PulseBar" target:self action:@selector(doQuit:)];
@@ -144,54 +148,57 @@ static NSTextField *help(NSString *s, NSRect f) {
     NSView *c = [self pageView]; it.view = c;
     CGFloat top = c.frame.size.height, W = c.frame.size.width;
 
-    // Density — the first-order layout choice.
-    [self section:@"Density" in:c at:top - 22];
+    // Layout profile — the one-tap headline choice. Both profiles reserve room on
+    // the left for the ✕ so the agent orb stays visible; they differ in chrome.
+    [self section:@"Layout profile" in:c at:top - 22];
+    _profileSeg = [NSSegmentedControl segmentedControlWithLabels:@[@"Default", @"Minimum"]
+                                                    trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                          target:self action:@selector(profileChanged:)];
+    _profileSeg.frame = NSMakeRect(20, top - 54, 220, 24); [c addSubview:_profileSeg];
+    _profileHint = label(@"", NSMakeRect(252, top - 52, W - 272, 18), 11, NO);
+    _profileHint.textColor = [NSColor secondaryLabelColor]; [c addSubview:_profileHint];
+    [c addSubview:help(@"Default keeps the full layout (auto density, all mode tabs). Minimum goes\nicon-only with collapsed tabs for maximum tile room. Both clear the ✕ on the left.",
+                       NSMakeRect(20, top - 90, W - 40, 32))];
+
+    // Fine-tune — the individual knobs. Touching any of these flips the profile to Custom.
+    [self section:@"Fine-tune" in:c at:top - 118];
     _densitySeg = [NSSegmentedControl segmentedControlWithLabels:@[@"Auto", @"Full", @"Compact"]
                                                     trackingMode:NSSegmentSwitchTrackingSelectOne
                                                           target:self action:@selector(densityChanged:)];
-    _densitySeg.frame = NSMakeRect(20, top - 54, 240, 24); [c addSubview:_densitySeg];
-    _collapseTabs = [NSButton checkboxWithTitle:@"Collapse mode tabs (show only the active pill; tap › to expand)"
+    _densitySeg.frame = NSMakeRect(20, top - 150, 220, 24); [c addSubview:_densitySeg];
+    _collapseTabs = [NSButton checkboxWithTitle:@"Collapse mode tabs (tap › to expand)"
                                          target:self action:@selector(collapseTabsChanged:)];
-    _collapseTabs.frame = NSMakeRect(276, top - 52, W - 296, 22); [c addSubview:_collapseTabs];
-    [c addSubview:help(@"Auto goes icon-only before any tile has to be hidden when the bar is tight;\nFull and Compact pin the look. Collapsing the tabs frees their width for tiles.",
-                       NSMakeRect(20, top - 90, W - 40, 32))];
+    _collapseTabs.frame = NSMakeRect(252, top - 148, W - 272, 22); [c addSubview:_collapseTabs];
 
-    // Fit — insets that keep tiles clear of system chrome.
-    [self section:@"Fit to your Touch Bar" in:c at:top - 118];
-    [c addSubview:help(@"Apple's ✕ shifts the bar right; its Control Strip can cover the right edge.\nPreview live on the Desktop Mirror as you adjust.",
-                       NSMakeRect(20, top - 158, W - 40, 32))];
-
-    [c addSubview:label(@"Right squeeze", NSMakeRect(20, top - 184, 100, 18), 11, NO)];
+    [c addSubview:label(@"Right squeeze", NSMakeRect(20, top - 182, 100, 18), 11, NO)];
     _rightSlider = [NSSlider sliderWithValue:PBDefaultSafeRight minValue:0 maxValue:232 target:self action:@selector(changeRight:)];
-    _rightSlider.frame = NSMakeRect(125, top - 186, W - 125 - 66, 20); _rightSlider.continuous = YES;
+    _rightSlider.frame = NSMakeRect(125, top - 184, W - 125 - 66, 20); _rightSlider.continuous = YES;
     [c addSubview:_rightSlider];
-    _rightVal = label([NSString stringWithFormat:@"%ld px", (long)PBDefaultSafeRight], NSMakeRect(W - 58, top - 184, 50, 18), 11, NO); [c addSubview:_rightVal];
+    _rightVal = label([NSString stringWithFormat:@"%ld px", (long)PBDefaultSafeRight], NSMakeRect(W - 58, top - 182, 50, 18), 11, NO); [c addSubview:_rightVal];
 
-    [c addSubview:label(@"Left reserve", NSMakeRect(20, top - 212, 100, 18), 11, NO)];
-    _leftSlider = [NSSlider sliderWithValue:0 minValue:0 maxValue:120 target:self action:@selector(changeLeft:)];
-    _leftSlider.frame = NSMakeRect(125, top - 214, W - 125 - 66, 20); _leftSlider.continuous = YES;
+    [c addSubview:label(@"Left reserve", NSMakeRect(20, top - 208, 100, 18), 11, NO)];
+    _leftSlider = [NSSlider sliderWithValue:PBCloseBoxReserve minValue:0 maxValue:120 target:self action:@selector(changeLeft:)];
+    _leftSlider.frame = NSMakeRect(125, top - 210, W - 125 - 66, 20); _leftSlider.continuous = YES;
     [c addSubview:_leftSlider];
-    _leftVal = label(@"0 px", NSMakeRect(W - 58, top - 212, 50, 18), 11, NO); [c addSubview:_leftVal];
+    _leftVal = label([NSString stringWithFormat:@"%ld px", (long)PBCloseBoxReserve], NSMakeRect(W - 58, top - 208, 50, 18), 11, NO); [c addSubview:_leftVal];
 
-    [c addSubview:label(@"Preset", NSMakeRect(20, top - 244, 50, 18), 11, NO)];
+    [c addSubview:label(@"Preset", NSMakeRect(20, top - 238, 50, 18), 11, NO)];
     NSArray *presets = @[@"Edge to Edge", @"Control Strip", @"Strip Expanded"];
     CGFloat px = 80;
     for (NSUInteger i = 0; i < presets.count; i++) {
         NSButton *b = [NSButton buttonWithTitle:presets[i] target:self action:@selector(applyFitPreset:)];
         b.bezelStyle = NSBezelStyleRounded; b.controlSize = NSControlSizeSmall;
         b.font = [NSFont systemFontOfSize:11]; b.tag = (NSInteger)i;
-        [b sizeToFit]; NSRect bf = b.frame; bf.origin = NSMakePoint(px, top - 248); b.frame = bf;
+        [b sizeToFit]; NSRect bf = b.frame; bf.origin = NSMakePoint(px, top - 242); b.frame = bf;
         [c addSubview:b]; px += bf.size.width + 8;
     }
-    [c addSubview:help(@"Edge to Edge = use everything · Control Strip = clear the collapsed strip\n(default) · Strip Expanded = clear the expanded strip.",
-                       NSMakeRect(20, top - 286, W - 40, 32))];
 
     // Tiles — per-tile arrangement lives in the editor.
-    [self section:@"Tiles" in:c at:top - 314];
+    [self section:@"Tiles" in:c at:top - 280];
     NSButton *arrange = [NSButton buttonWithTitle:@"Arrange & Resize Tiles…" target:self action:@selector(editLayout:)];
-    arrange.frame = NSMakeRect(20, top - 348, 190, 26); arrange.bezelStyle = NSBezelStyleRounded; [c addSubview:arrange];
+    arrange.frame = NSMakeRect(20, top - 314, 190, 26); arrange.bezelStyle = NSBezelStyleRounded; [c addSubview:arrange];
     [c addSubview:help(@"Tip: long-press the active mode pill on the bar to drag-reorder tiles in place.",
-                       NSMakeRect(20, top - 370, W - 40, 16))];
+                       NSMakeRect(20, top - 338, W - 40, 16))];
     return it;
 }
 
@@ -467,6 +474,33 @@ static NSTextField *help(NSString *s, NSRect f) {
     [_delegate settingsSetAgentTimeoutMinutes:m];
 }
 
+// Diagnostics — the rescue actions that used to live in the status menu.
+- (NSTabViewItem *)diagnosticsTab {
+    NSTabViewItem *it = [[NSTabViewItem alloc] initWithIdentifier:@"diagnostics"];
+    it.label = @"Diagnostics";
+    NSView *c = [self pageView]; it.view = c;
+    CGFloat top = c.frame.size.height, W = c.frame.size.width;
+
+    [self section:@"Touch Bar" in:c at:top - 22];
+    NSButton *retake = [NSButton buttonWithTitle:@"Re-take Over the Touch Bar" target:self action:@selector(reTakeTouchBar:)];
+    retake.frame = NSMakeRect(20, top - 56, 230, 28); retake.bezelStyle = NSBezelStyleRounded; [c addSubview:retake];
+    [c addSubview:help(@"Re-claims the whole bar and evicts the system Control Strip if it crept back\nafter an app or system event. Brief (~1s) flicker while it re-presents.",
+                       NSMakeRect(20, top - 92, W - 40, 32))];
+
+    [self section:@"Logs" in:c at:top - 124];
+    NSButton *log = [NSButton buttonWithTitle:@"Open Log" target:self action:@selector(openLogPressed:)];
+    log.frame = NSMakeRect(20, top - 158, 230, 28); log.bezelStyle = NSBezelStyleRounded; [c addSubview:log];
+    [c addSubview:help(@"Opens PulseBar's run log in your default text app — handy when something on the\nbar misbehaves and you want to see what happened.",
+                       NSMakeRect(20, top - 194, W - 40, 32))];
+
+    NSString *ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"?";
+    NSString *bld = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"?";
+    NSTextField *verLabel = label([NSString stringWithFormat:@"PulseBar v%@ (build %@)", ver, bld],
+                                  NSMakeRect(20, 16, W - 40, 16), 10, NO);
+    verLabel.textColor = [NSColor secondaryLabelColor]; [c addSubview:verLabel];
+    return it;
+}
+
 - (NSTabViewItem *)notesTab {
     NSTabViewItem *it = [[NSTabViewItem alloc] initWithIdentifier:@"notes"];
     it.label = @"Notes";
@@ -532,6 +566,9 @@ static NSTextField *help(NSString *s, NSRect f) {
     _rightVal.stringValue = [NSString stringWithFormat:@"%ld px", (long)lround(sr)];
     _densitySeg.selectedSegment = [_delegate settingsDensity];   // PBDensity ordinals match segment order
     _collapseTabs.state = [_delegate settingsTabsCollapsed] ? NSControlStateValueOn : NSControlStateValueOff;
+    NSInteger profile = [_delegate settingsLayoutProfile];       // 0 Default · 1 Minimum · 2 Custom
+    _profileSeg.selectedSegment = (profile <= 1) ? profile : -1; // deselect both when Custom
+    _profileHint.stringValue = (profile >= 2) ? @"Custom — hand-tuned" : @"";
     _autoModeCheck.state = [_delegate settingsAutoModeEnabled] ? NSControlStateValueOn : NSControlStateValueOff;
     _rules = [NSMutableArray array];
     for (NSDictionary *r in [_delegate settingsAutoModeRules]) [_rules addObject:[r mutableCopy]];
@@ -541,6 +578,10 @@ static NSTextField *help(NSString *s, NSRect f) {
     _agentTimeoutVal.stringValue = atm <= 0 ? @"never" : [NSString stringWithFormat:@"%ld min idle", (long)atm];
     [self refreshModels];
 }
+
+// Re-pull values when something outside the window changes them (e.g. a layout
+// profile applied from the status menu) — but only if the window is on-screen.
+- (void)syncIfVisible { if (self.window.isVisible) [self syncFromDelegate]; }
 
 #pragma mark - notes history
 
@@ -610,10 +651,12 @@ static NSTextField *help(NSString *s, NSRect f) {
 - (void)changeLeft:(NSSlider *)s {
     _leftVal.stringValue = [NSString stringWithFormat:@"%ld px", (long)lround(s.doubleValue)];
     [_delegate settingsSetSafeLeft:(CGFloat)s.doubleValue];
+    [self refreshProfileIndicator];
 }
 - (void)changeRight:(NSSlider *)s {
     _rightVal.stringValue = [NSString stringWithFormat:@"%ld px", (long)lround(s.doubleValue)];
     [_delegate settingsSetSafeRight:(CGFloat)s.doubleValue];
+    [self refreshProfileIndicator];
 }
 // Fit presets: insets only — density is orthogonal and never touched here.
 - (void)applyFitPreset:(NSButton *)b {
@@ -623,9 +666,21 @@ static NSTextField *help(NSString *s, NSRect f) {
     _leftSlider.doubleValue = l; _rightSlider.doubleValue = r;
     [self changeLeft:_leftSlider]; [self changeRight:_rightSlider];
 }
-- (void)densityChanged:(NSSegmentedControl *)s { [_delegate settingsSetDensity:s.selectedSegment]; }
-- (void)collapseTabsChanged:(NSButton *)b { [_delegate settingsSetTabsCollapsed:(b.state == NSControlStateValueOn)]; }
+- (void)densityChanged:(NSSegmentedControl *)s { [_delegate settingsSetDensity:s.selectedSegment]; [self refreshProfileIndicator]; }
+- (void)collapseTabsChanged:(NSButton *)b { [_delegate settingsSetTabsCollapsed:(b.state == NSControlStateValueOn)]; [self refreshProfileIndicator]; }
+// Apply a profile, then re-sync so the fine-tune controls reflect the new bundle.
+- (void)profileChanged:(NSSegmentedControl *)s { [_delegate settingsSetLayoutProfile:s.selectedSegment]; [self syncFromDelegate]; }
+- (void)reTakeTouchBar:(id)s { [_delegate settingsReattachTouchBar]; }
+- (void)openLogPressed:(id)s { [_delegate settingsOpenLog]; }
 - (void)editLayout:(id)s { [_delegate settingsEditLayout]; }
 - (void)doQuit:(id)s { [_delegate settingsQuit]; }
+
+// Light refresh of just the profile chip (a fine-tune edit flips it to Custom) —
+// avoids a full syncFromDelegate that would fight a live slider drag or re-hit Ollama.
+- (void)refreshProfileIndicator {
+    NSInteger profile = [_delegate settingsLayoutProfile];
+    _profileSeg.selectedSegment = (profile <= 1) ? profile : -1;
+    _profileHint.stringValue = (profile >= 2) ? @"Custom — hand-tuned" : @"";
+}
 
 @end

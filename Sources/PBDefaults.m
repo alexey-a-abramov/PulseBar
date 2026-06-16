@@ -25,6 +25,7 @@ NSString * const PBKeyAgentSessionTimeout = @"agentSessionTimeoutMin";
 NSString * const PBKeyAgentModel  = @"agentModel";
 NSString * const PBKeyShortcutPeekMod    = @"shortcutPeekMod";    // 0=⌃ 1=⌥ 2=⌘ 3=Off
 NSString * const PBKeyShortcutOverlayMod = @"shortcutOverlayMod"; // 0=⌃ 1=⌥ 2=⌘ 3=Off
+NSString * const PBKeyLayoutProfile      = @"layoutProfile";      // 0=Default 1=Minimum 2=Custom
 
 const NSInteger PBDefaultWorkMinutes          = 25;
 const NSInteger PBDefaultBreakMinutes         = 5;
@@ -32,6 +33,7 @@ const NSInteger PBDefaultBreakReminderMinutes = 80;
 const NSInteger PBDefaultSafeLeft             = 0;
 const NSInteger PBDefaultSafeRight            = 110;
 const NSInteger PBDefaultAgentSessionTimeoutMin = 5;
+const NSInteger PBCloseBoxReserve               = 64;
 
 NSInteger PBDefaultsInteger(NSString *key, NSInteger fallback) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;

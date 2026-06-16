@@ -89,6 +89,13 @@ void pb_composeReset(NSInteger mode);
 // i.e. go denser BEFORE the priority system starts hiding tiles.
 typedef NS_ENUM(NSInteger, PBDensity) { PBDensityAuto = 0, PBDensityFull = 1, PBDensityCompact = 2 };
 
+// Layout profiles — one-tap bundles of {density, tabs, safe-area insets}, all of
+// which reserve space on the LEFT for the Touch Bar ✕ close box so the agent orb
+// stays visible on the right. Default = the everyday rich layout; Minimum = the
+// same ✕-aware safe areas but icon-only + collapsed tabs to maximise tile room.
+// Custom is set automatically when any of those knobs is hand-tuned in Settings.
+typedef NS_ENUM(NSInteger, PBLayoutProfile) { PBLayoutProfileDefault = 0, PBLayoutProfileMinimum = 1, PBLayoutProfileCustom = 2 };
+
 // Width the mode needs to show EVERY tile at its full minW (overrides applied,
 // no priority hiding). The Auto-density predicate compares this to the space left
 // after the insets/tabs/cluster.
