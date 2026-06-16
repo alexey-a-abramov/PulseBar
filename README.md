@@ -43,8 +43,7 @@ gap (system-wide keyboard/mouse/Touch-Bar idle).
 Hold the **NOTE** tile in Focus mode and just talk (walkie-talkie) — release and
 keep working. The transcript is captured on-device and appended to
 `~/Library/Logs/PulseBar/notes.jsonl`; nothing opens, no agent runs. Export them
-as a table any time via the menu bar → **Export Side-Notes (CSV)** (writes
-`notes.csv`).
+as a table any time from **⚙ Settings → Notes → Export CSV…** (writes `notes.csv`).
 
 ## Tiles (across modes)
 
@@ -77,37 +76,61 @@ volume/brightness/media, you lose nothing.
 
 PulseBar hides the Control Strip the no-flicker way — it **presents with `placement:1`**
 (MTMR's trick), which suppresses it natively without restarting the Touch Bar agent —
-and suppresses the system close box (✕) at setup. If a stray ✕ or Control Strip still
-creeps in, **Settings → Layout** lets you *squeeze* the layout (live sliders + presets) so every tile
-and the agent orb stay clear, and the menu's **"Re-take Over the Touch Bar"** (⌘R) does
-the heavy reset (writes `PresentationModeGlobal=app` + restarts the agent). All
-reversible: it backs up your previous value and restores it on quit. It does **not**
-touch your per-app Touch Bar overrides.
+and suppresses the system close box (✕) at setup. Because the ✕ can still appear on some
+setups and shove the bar right, **every layout profile reserves 64 px on the left for it
+by default** so the agent orb never falls off the right edge (see *Layout profiles* below).
+If a stray ✕ or Control Strip still creeps in, **Settings → Layout** lets you *fine-tune*
+the squeeze (live sliders + presets), and **Settings → Diagnostics → "Re-take Over the
+Touch Bar"** does the heavy reset (writes `PresentationModeGlobal=app` + restarts the
+agent). All reversible: it backs up your previous value and restores it on quit. It does
+**not** touch your per-app Touch Bar overrides.
+
+## Status-bar menu (the `▦` icon)
+
+The menu is deliberately small — the quick, everyday things only:
+- **Ask the Agent…** (⌘A)
+- **Layout ▸** — switch profile (**Default** / **Minimum**) or open **Customize Layout…**
+- **Lock Screen**
+- **Settings…** (⌘,) — the home for everything else
+- **Quit PulseBar** (⌘Q)
+
+### Layout profiles
+A profile is a one-tap bundle of *density + mode tabs + safe-area insets*. **Both profiles
+reserve room on the left for the Touch Bar ✕ so the agent orb on the right stays visible.**
+- **Default** — auto density, full mode tabs (the everyday rich layout). Applied automatically
+  on first run.
+- **Minimum** — the same ✕-aware safe areas, but **icon-only** tiles and a **collapsed** tab
+  strip (active pill + **›** chevron) to free maximum width for content.
+
+Hand-tuning any layout knob in Settings flips the active profile to **Custom**.
 
 ## Settings window (the ⚙ button)
 
 Tapping the gear (or the `▦` menu bar icon → Settings) brings up a sectioned desktop
 window:
-- **General** — full-bar takeover, desktop mirror, modifier shortcuts (⌃ peek · ⌥ app),
-  show top CPU process, start at login, media app.
-- **Fit** — *squeeze* the layout around residual system chrome (live sliders, previewed
-  on the mirror) and toggle **Compact layout** (icon-only mode pill + action tiles).
-- **Focus** — Pomodoro work/break, adaptive length, and the unmutable **break reminder**
-  (a full-width "take a break" nudge after a long unbroken session, repeating every 15 min).
+- **General** — full-bar takeover, desktop mirror, show top CPU process, start at login, media app.
+- **Layout** — the **Layout profile** switch (Default / Minimum / Custom) over a **Fine-tune**
+  section: density (Auto / Full / Compact), collapse mode tabs, *squeeze* sliders + presets
+  (live-previewed on the mirror), and **Arrange & Resize Tiles…**.
+- **Shortcuts** — enable modifier shortcuts and choose which key drives **peek previous mode**
+  and the **app-actions overlay** (⌃ / ⌥ / ⌘ / off), with a conflict warning.
 - **Auto-Switch** — pair apps with modes so the bar switches automatically when you change apps
   (e.g. Xcode → System, Music → Media, Dynalist → Glance). Off by default; a manual switch still
   sticks until the next app change.
+- **Focus** — Pomodoro work/break, adaptive length, and the unmutable **break reminder**
+  (a full-width "take a break" nudge after a long unbroken session, repeating every 15 min).
+- **Agent** — pick / download the on-device Ollama model and the chat session timeout.
+- **Diagnostics** — **Re-take Over the Touch Bar** and **Open Log**.
 - **Notes** — your captured side-notes history, with CSV export.
 
 Other shortcuts: hold **⌃** to peek your previous mode (release to snap back); **long-press
 the active mode pill** to enter *arrange mode* and drag tiles left/right to reorder them.
-
-**Collapse the mode tabs** (menu bar → *Collapse Mode Tabs*, or Settings → Layout) to show only
-the active mode pill and reclaim the other tabs' width for tiles; tap the **›** chevron on the bar
+**Collapse the mode tabs** from Settings → Layout (or the **Minimum** profile) to show only the
+active mode pill and reclaim the other tabs' width for tiles; tap the **›** chevron on the bar
 to expand again.
 
 ### Customize layout (add / remove widgets)
-**Settings → Layout → Customize layout…** (or the menu bar) opens a per-mode editor. Pick a
+**Menu → Layout → Customize Layout…** (or **Settings → Layout → Arrange & Resize Tiles…**) opens a per-mode editor. Pick a
 mode and: drag **Size/Min** to resize a tile, toggle **Show** to hide it, lower **Priority** so it
 drops first when space is tight, **▲/▼** to reorder, **✕** to remove. **Add tile…** adds a
 **World Clock** (any city from the master list — DST-correct), an **App Launcher** (a curated app
@@ -165,7 +188,7 @@ Sources/
   VoiceCommands.m           closed command vocabulary + offline intent parser
   AppIndex.m · Queries.m    fuzzy app launcher · read-only spoken status answers
   VoiceNotes.m              Focus side-notes: walkie-talkie capture → notes.jsonl / CSV
-  SettingsWindowController.m  sectioned settings window (General · Fit · Focus · Notes)
+  SettingsWindowController.m  sectioned settings window (General · Layout+profiles · Shortcuts · Auto-Switch · Focus · Agent · Diagnostics · Notes)
   LayoutEditorWindowController.m  layout editor: per-tile size/priority/visibility/order + add/remove (world clocks, apps, any tile)
   PBDefaults.m              NSUserDefaults key constants
   PreviewData.m             canned sample telemetry for previews/harnesses
