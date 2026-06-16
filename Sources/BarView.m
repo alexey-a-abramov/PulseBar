@@ -175,7 +175,8 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     if (density == PBDensityFull)    return NO;
     if (density == PBDensityCompact) return YES;
     CGFloat tabs = kTabActiveFull + (BarModeCount - 1) * kTabInactive + BarModeCount * kTabGap;
-    CGFloat avail = width - MAX(0, li) - MAX(0, ri) - (kClusterPad + kAgentW + kClusterGap) - (4 + tabs + 4 + 4 + 8);
+    CGFloat cri = MAX(MAX(0, ri), PBCloseBoxReserve);   // match drawRect's guaranteed orb clearance
+    CGFloat avail = width - MAX(0, li) - cri - (kClusterPad + kAgentW + kClusterGap) - (4 + tabs + 4 + 4 + 8);
     return PBRequiredMinContentWidth(mode) > avail;
 }
 
@@ -791,12 +792,16 @@ static int viewCount(TileType t) {
     // panel) so nothing important is ever covered and the layout doesn't shift as
     // that chrome comes and goes. Faint hairlines mark the boundaries.
     CGFloat li = MAX(0, self.safeAreaLeftInset), ri = MAX(0, self.safeAreaRightInset);
+    // The agent orb must stay on-screen even when the ✕ shoves the whole bar right,
+    // or the user squeezes the right edge to nothing (Edge-to-Edge): never let the
+    // cluster sit closer than the ✕'s width to the trailing edge.
+    CGFloat cri = MAX(ri, PBCloseBoxReserve);
     if (li > 0) [self divider:li];
     if (ri > 0) [self divider:W - ri];
 
-    // Right cluster: just the agent orb, kept inside the right safe inset. No clock
+    // Right cluster: just the agent orb, kept clear of the trailing edge. No clock
     // (the menu bar shows the time) and no settings gear (it's in the menu too).
-    CGFloat rx = W - ri - kClusterPad;
+    CGFloat rx = W - cri - kClusterPad;
     NSRect rAg = NSMakeRect(rx - kAgentW, 0, kAgentW, H); rx -= kAgentW + kClusterGap; [self drawTile:(Tile){TAGENT, rAg, 0}]; [self push:TAGENT rect:rAg arg:0];
     CGFloat rightEdge = rx; [self divider:rightEdge];
 
