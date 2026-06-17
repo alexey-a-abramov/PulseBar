@@ -37,6 +37,7 @@ extern const NSInteger PBDefaultSafeLeft;             // 0
 extern const NSInteger PBDefaultSafeRight;            // 110
 extern const NSInteger PBDefaultAgentSessionTimeoutMin; // 5 (0 = never reset the dialogue)
 extern const NSInteger PBCloseBoxReserve;             // 64 — px the Touch Bar ✕ close box occupies on the left; reserved by every layout profile
+extern const NSInteger PBAgentRightClearance;         // 128 — min px between the agent orb and the trailing edge (covers the ✕ rightward shift + right-edge chrome); the orb never sits closer than this regardless of the right squeeze
 
 // Read a defaults value, returning `fallback` when the key has never been set.
 NSInteger PBDefaultsInteger(NSString *key, NSInteger fallback);

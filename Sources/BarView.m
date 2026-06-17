@@ -175,7 +175,7 @@ static NSFont *monoFont(CGFloat sz, NSFontWeight w) {
     if (density == PBDensityFull)    return NO;
     if (density == PBDensityCompact) return YES;
     CGFloat tabs = kTabActiveFull + (BarModeCount - 1) * kTabInactive + BarModeCount * kTabGap;
-    CGFloat cri = MAX(MAX(0, ri), PBCloseBoxReserve);   // match drawRect's guaranteed orb clearance
+    CGFloat cri = MAX(MAX(0, ri), PBAgentRightClearance);   // match drawRect's guaranteed orb clearance
     CGFloat avail = width - MAX(0, li) - cri - (kClusterPad + kAgentW + kClusterGap) - (4 + tabs + 4 + 4 + 8);
     return PBRequiredMinContentWidth(mode) > avail;
 }
@@ -794,8 +794,9 @@ static int viewCount(TileType t) {
     CGFloat li = MAX(0, self.safeAreaLeftInset), ri = MAX(0, self.safeAreaRightInset);
     // The agent orb must stay on-screen even when the ✕ shoves the whole bar right,
     // or the user squeezes the right edge to nothing (Edge-to-Edge): never let the
-    // cluster sit closer than the ✕'s width to the trailing edge.
-    CGFloat cri = MAX(ri, PBCloseBoxReserve);
+    // cluster sit closer than PBAgentRightClearance to the trailing edge. (This is
+    // wider than the ✕'s own width because the right edge eats extra chrome.)
+    CGFloat cri = MAX(ri, PBAgentRightClearance);
     if (li > 0) [self divider:li];
     if (ri > 0) [self divider:W - ri];
 

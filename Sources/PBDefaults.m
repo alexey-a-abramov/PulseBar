@@ -34,6 +34,7 @@ const NSInteger PBDefaultSafeLeft             = 0;
 const NSInteger PBDefaultSafeRight            = 110;
 const NSInteger PBDefaultAgentSessionTimeoutMin = 5;
 const NSInteger PBCloseBoxReserve               = 64;
+const NSInteger PBAgentRightClearance           = 128;
 
 NSInteger PBDefaultsInteger(NSString *key, NSInteger fallback) {
     NSUserDefaults *ud = NSUserDefaults.standardUserDefaults;

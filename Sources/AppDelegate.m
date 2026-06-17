@@ -61,10 +61,10 @@ typedef struct { PBDensity density; BOOL tabsCollapsed; NSInteger safeLeft; NSIn
 static PBProfileSpec profileSpec(PBLayoutProfile p) {
     switch (p) {
         case PBLayoutProfileMinimum:   // icon-only + collapsed tabs → maximum room for tiles
-            return (PBProfileSpec){ PBDensityCompact, YES, PBCloseBoxReserve, PBDefaultSafeRight };
+            return (PBProfileSpec){ PBDensityCompact, YES, PBCloseBoxReserve, PBAgentRightClearance };
         case PBLayoutProfileDefault:   // the everyday rich layout
         default:
-            return (PBProfileSpec){ PBDensityAuto,    NO,  PBCloseBoxReserve, PBDefaultSafeRight };
+            return (PBProfileSpec){ PBDensityAuto,    NO,  PBCloseBoxReserve, PBAgentRightClearance };
     }
 }
 
