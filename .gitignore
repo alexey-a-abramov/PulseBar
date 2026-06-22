@@ -5,3 +5,8 @@ build/
 *.o
 *.dSYM/
 .DS_Store
+
+# local runtime / tooling (never publish)
+data/
+logs/
+.claude/

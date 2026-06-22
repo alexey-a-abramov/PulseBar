@@ -1,18 +1,40 @@
-# PulseBar — an advanced, interactive Touch Bar
+# PulseBar — an advanced, interactive Touch Bar for macOS
 
 A **native macOS** menu-bar agent that takes over the Touch Bar — **regardless of
 which app is focused** — and turns it into a live system monitor *and* a control
 surface you can actually press.
 
+![PulseBar in all six modes — System, Media, Focus, Classic, Actions, Glance](site/assets/hero_modes.png)
+
+## Why
+
+Apple shipped the Touch Bar with a good idea and a timid execution. The public
+`NSTouchBar` API is **focus-bound**: the strip only ever shows whatever the
+*frontmost* app chooses to put there — usually chrome you didn't ask for — and
+there's no first-class way to make it a **persistent, glanceable** surface. So
+most people ignored it, and Apple quietly dropped it. The hardware deserved
+better.
+
+PulseBar is a different take on the same strip. Instead of per-app buttons that
+vanish when you switch windows, it presents **one always-on bar that you own
+across every app** — a live readout of your machine *and* a set of controls you
+can actually press. It's the way the Touch Bar should have worked out of the box.
+
+And it's **light**. PulseBar is a native AppKit agent built and tuned for
+**Apple Silicon (M1)**: an AppKit-free tile model, a cached size-aware packing
+engine, and once-a-second sampling mean it lives in the menu bar on a tiny CPU
+and memory budget. No Electron, no helper farm, no background hogs.
+
 ```
-[ SYSTEM | ♪ | ⏱ | ◐ | ⚡ ]  ◀ active mode panel (animates open) ▶   …always:  BATT · CLOCK · ⚙
+[ SYSTEM | ♪ | ⏱ | ◐ | ⚡ | ◉ ]  ◀ active mode panel (animates open) ▶   …always: agent orb ●
   └ accordion mode tabs: the active one expands with a label; tap to switch (content cross-fades)
 ```
 
 ## Modes (animated accordion)
 
 Tap a tab on the left to switch modes — the active tab expands (the "accordion"),
-the panel cross-fades, and your choice is remembered:
+the panel cross-fades, and your choice is remembered. The agent orb stays pinned
+on the right in every mode; the clock and ⚙ settings live in the menu bar.
 
 | Mode | Contents |
 |------|----------|
@@ -21,136 +43,66 @@ the panel cross-fades, and your choice is remembered:
 | **Focus**   | adaptive Pomodoro · **session** · voice side-note (hold to talk) · ☕ caffeine · Reminder · Lock |
 | **Classic** | brightness · volume · media (the Control-Strip basics) |
 | **Actions** | colourful app launcher (Arc · Termius · Zed · Claude · Claude Code · Dynalist) · Screenshot · Lock |
-| **Glance**  | at-a-glance dashboard: CPU · MEM · temp/fan · **world clocks** (NYC · London · Tokyo by default) · battery — the clocks' home (cities are editable) |
-
-The agent orb stays pinned on the right in every mode; the clock and ⚙ settings
-live in the menu bar (not the bar).
+| **Glance**  | at-a-glance dashboard: CPU · MEM · temp/fan · **world clocks** (NYC · London · Tokyo by default) · battery |
 
 **Tap a metric tile to cycle its view** (dynamic ↔ fundamental): CPU sparkline↔cores,
 MEM usage↔pressure/swap, GPU spark↔bar, NET rates↔readout, DISK rates↔space,
 and the uptime chip toggles **uptime ↔ session**.
 
-### Adaptive Pomodoro
-The focus timer's length adapts to how long you've actually been working. While
-the timer is idle, PulseBar sets the next focus block from your current
-**uninterrupted working session** (the "session" chip): **25 min + 5 min for every
-30 min of session, clamped to 20–50 min**. Tap the time to override it manually
-(cycles 20 → 25 → 30 → 45 → 50; the "auto" label switches to "set"); tap the play
-icon to start. The working session itself is time since your last >5-minute input
-gap (system-wide keyboard/mouse/Touch-Bar idle).
-
-### Focus side-notes
-Hold the **NOTE** tile in Focus mode and just talk (walkie-talkie) — release and
-keep working. The transcript is captured on-device and appended to
-`~/Library/Logs/PulseBar/notes.jsonl`; nothing opens, no agent runs. Export them
-as a table any time from **⚙ Settings → Notes → Export CSV…** (writes `notes.csv`).
-
-## Tiles (across modes)
+## Tiles
 
 **Metrics (glanceable):**
-- **CPU** — % + sparkline + the current **top CPU process**. *Tap* to switch to a per-core view (P+E cores).
-- **MEM** — used / total GB + gauge (active + wired + compressed); shows **swap** used when memory spills over.
+- **CPU** — % + sparkline + the current **top CPU process**. *Tap* for a per-core view (P + E cores).
+- **MEM** — used / total GB + gauge (active + wired + compressed); shows **swap** when memory spills over.
 - **GPU** — utilisation % + sparkline (IOAccelerator).
 - **NET** — live ↓ / ↑ throughput + sparkline.
 - **DISK** — read/write I/O + free space.
-- **TEMP** — CPU die temperature (°C, green→amber→red ramp) + fan RPM. Apple-Silicon temps come from the IOHIDEventSystemClient thermal sensors (not the SMC); fans from AppleSMC.
-- **World Clock** — any city from a master list, DST/summer-time correct, with a live ±offset vs. local and a next/prev-day badge. Add several; mix into any mode.
+- **TEMP** — CPU die temperature (°C, green→amber→red ramp) + fan RPM. On Apple Silicon the temps come from the IOHIDEventSystemClient thermal sensors (not the SMC); fans from AppleSMC.
+- **World Clock** — any city from a master list, **DST/summer-time correct**, with a live ±offset vs. local and a next/prev-day badge. Add several; mix into any mode.
 
-**Controls (tap / drag):**
-- **Now Playing** — track + ◀ / ⏯ / ▶ (MediaRemote).
-- **Volume** — drag the slider; tap the speaker to mute (CoreAudio).
-- **Brightness** — drag the slider (DisplayServices).
-- **Pomodoro** — tap to start/pause; auto-advances work↔break with a chime.
-- **⚙ Settings** — opens a real **settings window on the desktop**.
-- **BATT / CLOCK** — battery glyph + charge, and time/date pinned right.
+**Controls (tap / drag):** Now Playing (MediaRemote) · Volume (CoreAudio) · Brightness
+(DisplayServices) · Pomodoro · **⚙ Settings** (opens a real desktop window) · BATT / CLOCK.
 
-Runs as a background **accessory app** (no Dock icon; `▦` menu-bar icon), updating
-once a second even when another app is frontmost.
+## Layout profiles (composable & ✕-aware)
 
-## Take over the *entire* bar (hide the Control Strip)
+macOS sometimes shows a close box (✕) that shoves the bar right. Every layout
+**profile** reserves room for it so the agent orb on the right stays visible. Switch
+with one tap from the menu, or fine-tune any tile in the editor.
 
-By default macOS keeps the system **Control Strip** (volume/brightness/Siri) on the
-right. Open **⚙ Settings → "Take over the entire Touch Bar"** to hide it so PulseBar
-fills the whole width *and* stays put across all apps. Because PulseBar has its own
-volume/brightness/media, you lose nothing.
+| | |
+|---|---|
+| **Default** — auto density, full mode tabs (the everyday layout, applied on first run) | ![Default profile](site/assets/profile_default.png) |
+| **Minimum** — same ✕-aware margins, but icon-only tiles + a collapsed tab strip for maximum tile room | ![Minimum profile](site/assets/profile_minimum.png) |
 
-PulseBar hides the Control Strip the no-flicker way — it **presents with `placement:1`**
-(MTMR's trick), which suppresses it natively without restarting the Touch Bar agent —
-and suppresses the system close box (✕) at setup. Because the ✕ can still appear on some
-setups and shove the bar right, **every layout profile reserves 64 px on the left for it
-by default** so the agent orb never falls off the right edge (see *Layout profiles* below).
-If a stray ✕ or Control Strip still creeps in, **Settings → Layout** lets you *fine-tune*
-the squeeze (live sliders + presets), and **Settings → Diagnostics → "Re-take Over the
-Touch Bar"** does the heavy reset (writes `PresentationModeGlobal=app` + restarts the
-agent). All reversible: it backs up your previous value and restores it on quit. It does
-**not** touch your per-app Touch Bar overrides.
+Widgets are **composable per mode**: add a world clock, an app launcher, or any
+tile to any mode via the in-app editor — the same tile can live in several modes.
+The packing engine caches its work, so none of it costs a frame.
 
-## Status-bar menu (the `▦` icon)
+## Quietly smart
+- **Adaptive Pomodoro** — the focus timer's length adapts to how long you've actually been working: **25 min + 5 for every 30 min** of uninterrupted session, clamped 20–50.
+- **Voice side-notes** — hold the NOTE tile in Focus and just talk (walkie-talkie); captured on-device to `~/Library/Logs/PulseBar/notes.jsonl`, exportable to CSV.
+- **On-device agent** — *Ask the Agent* by text or push-to-talk; it runs a local model (Ollama / Gemma) and dispatches safe actions, no cloud round-trip.
+- **Per-app auto-switch** — pair apps with modes (Xcode → System, Music → Media); off by default, fully configurable.
+- **Modifier shortcuts** — hold a modifier to peek your previous mode or pop an app-actions overlay; pick which key does what.
+- **Desktop mirror** — a floating, clickable copy of the bar on your desktop (handy on any Mac, and a live preview while you tweak the fit).
 
-The menu is deliberately small — the quick, everyday things only:
-- **Ask the Agent…** (⌘A)
-- **Layout ▸** — switch profile (**Default** / **Minimum**) or open **Customize Layout…**
-- **Lock Screen**
-- **Settings…** (⌘,) — the home for everything else
-- **Quit PulseBar** (⌘Q)
+## Settings & menu
 
-### Layout profiles
-A profile is a one-tap bundle of *density + mode tabs + safe-area insets*. **Both profiles
-reserve room on the left for the Touch Bar ✕ so the agent orb on the right stays visible.**
-- **Default** — auto density, full mode tabs (the everyday rich layout). Applied automatically
-  on first run.
-- **Minimum** — the same ✕-aware safe areas, but **icon-only** tiles and a **collapsed** tab
-  strip (active pill + **›** chevron) to free maximum width for content.
-
-Hand-tuning any layout knob in Settings flips the active profile to **Custom**.
-
-## Settings window (the ⚙ button)
-
-Tapping the gear (or the `▦` menu bar icon → Settings) brings up a sectioned desktop
-window:
-- **General** — full-bar takeover, desktop mirror, show top CPU process, start at login, media app.
-- **Layout** — the **Layout profile** switch (Default / Minimum / Custom) over a **Fine-tune**
-  section: density (Auto / Full / Compact), collapse mode tabs, *squeeze* sliders + presets
-  (live-previewed on the mirror), and **Arrange & Resize Tiles…**.
-- **Shortcuts** — enable modifier shortcuts and choose which key drives **peek previous mode**
-  and the **app-actions overlay** (⌃ / ⌥ / ⌘ / off), with a conflict warning.
-- **Auto-Switch** — pair apps with modes so the bar switches automatically when you change apps
-  (e.g. Xcode → System, Music → Media, Dynalist → Glance). Off by default; a manual switch still
-  sticks until the next app change.
-- **Focus** — Pomodoro work/break, adaptive length, and the unmutable **break reminder**
-  (a full-width "take a break" nudge after a long unbroken session, repeating every 15 min).
-- **Agent** — pick / download the on-device Ollama model and the chat session timeout.
-- **Diagnostics** — **Re-take Over the Touch Bar** and **Open Log**.
-- **Notes** — your captured side-notes history, with CSV export.
-
-Other shortcuts: hold **⌃** to peek your previous mode (release to snap back); **long-press
-the active mode pill** to enter *arrange mode* and drag tiles left/right to reorder them.
-**Collapse the mode tabs** from Settings → Layout (or the **Minimum** profile) to show only the
-active mode pill and reclaim the other tabs' width for tiles; tap the **›** chevron on the bar
-to expand again.
-
-### Customize layout (add / remove widgets)
-**Menu → Layout → Customize Layout…** (or **Settings → Layout → Arrange & Resize Tiles…**) opens a per-mode editor. Pick a
-mode and: drag **Size/Min** to resize a tile, toggle **Show** to hide it, lower **Priority** so it
-drops first when space is tight, **▲/▼** to reorder, **✕** to remove. **Add tile…** adds a
-**World Clock** (any city from the master list — DST-correct), an **App Launcher** (a curated app
-or **Other app…** to pick any installed `.app`, so Actions/custom apps like Dynalist are fully
-manageable), or any other tile — and the same tile can live in several modes. Changes are per-mode and reversible
-(**Reset this mode**). The layout engine caches packing so none of this costs a frame.
-
-Some Actions prompt for permission the first time (Screenshot → Screen Recording,
-Dark Mode → Automation); macOS will ask once.
+The `▦` menu-bar icon keeps only the everyday things — **Ask the Agent**, a
+**Layout** switch (Default / Minimum / Customize…), **Lock Screen**, **Settings**,
+**Quit**. Everything else lives in the sectioned **Settings** window: General ·
+Layout (+ profiles) · Shortcuts · Auto-Switch · Focus · Agent · Diagnostics · Notes.
 
 ## How "full bar regardless of focus" works
 
-The public `NSTouchBar` API is focus-bound; to own the bar persistently PulseBar uses
-the same private SPI as Pock / MTMR / BetterTouchTool — all verified at runtime on the
-build machine before use:
+The public `NSTouchBar` API is focus-bound; to own the bar persistently PulseBar
+uses the same private SPI as Pock / MTMR / BetterTouchTool — all verified at
+runtime on the build machine before use:
 - `DFRFoundation` control-strip presence + `presentSystemModalTouchBar:placement:` (focus-independent; `placement:1` hides the Control Strip natively) + `DFRSystemModalShowsCloseBoxWhenFrontMost(NO)` (suppress the ✕)
 - `DisplayServices` brightness, `MediaRemote` now-playing/transport, CoreAudio volume
 
-> ⚠️ Private API → not App-Store-shippable; Touch Bar Macs only. Built & tested on a
-> MacBookPro17,1 (M1 13″, macOS 15.6). Guarded so it degrades to a menu-bar item where
+> ⚠️ Private API → **not App-Store-shippable; Touch Bar Macs only.** Built & tested on a
+> MacBook Pro (M1 13″, macOS 15.6). Guarded so it degrades to a menu-bar item where
 > the SPI is missing.
 
 ## Build · Run · Test
@@ -160,46 +112,38 @@ build machine before use:
 ./run.command          # build-if-needed, then launch
 ./tests/run_tests.sh   # unit tests (all samplers) + smoke test (presents bar, clean exit)
 ```
-There's also `tests/render_test.m` → renders the bar to `/tmp/pulsebar_bar.png` so the
-layout can be inspected without a physical Touch Bar.
+There's also `tests/render_test.m`, which renders the bar to PNGs so the layout can
+be inspected without a physical Touch Bar (the website's screenshots come from it).
 
-Quit via the `▦` menu-bar icon → **Quit PulseBar** (or `pkill -x PulseBar`, now graceful).
+Runs as a background **accessory app** (no Dock icon; `▦` menu-bar icon). Quit via the
+menu-bar icon → **Quit PulseBar** (or `pkill -x PulseBar`).
 
 ## Source map
 
 ```
 Sources/
-  main.m                    accessory NSApplication (no Dock)
-  AppDelegate.m             SPI presentation · 1 Hz sampling · actions · full-bar · LaunchAgent
-  BarView.m                 interactive tile rendering + hit-testing (drives the PBLayout engine)
-  PBLayout.m                AppKit-free tile model + size-aware packing engine + per-mode composition (unit-tested)
-  PBClock.m                 world-clock master city list + DST-correct formatting
-  PBThermal.m               CPU temperature (IOHIDEventSystemClient) + fan RPM (AppleSMC)
-  PBFormat.m · PBProcess.m  pure value formatters · shared NSTask helpers
-  PBLoginItem.m · PBBreakReminder.m  login LaunchAgent · session break-reminder nudge
-  Stats.m                   cpu/per-core/mem/net/battery/gpu/disk/top-process
-  Controls.m                volume·mute (CoreAudio) · brightness (DisplayServices) · media (MediaRemote)
-  Pomodoro.m                work/break timer model
-  TouchBarPresenter.m       Touch Bar SPI: present/dismiss + reversible full-bar takeover
-  MirrorController.m        desktop mirror panel (floating, clickable copy)
-  ModifierMonitor.m         debounced ⌃/⌥ hold detection (⌃ peek previous mode · ⌥ app overlay)
-  AgentCoordinator.m        agent + chat window + push-to-talk + safe action dispatch
-  Agent.m · AgentWindowController.m   intent resolver (fast-path → Gemma) · chat/voice window
-  VoiceCommands.m           closed command vocabulary + offline intent parser
-  AppIndex.m · Queries.m    fuzzy app launcher · read-only spoken status answers
-  VoiceNotes.m              Focus side-notes: walkie-talkie capture → notes.jsonl / CSV
-  SettingsWindowController.m  sectioned settings window (General · Layout+profiles · Shortcuts · Auto-Switch · Focus · Agent · Diagnostics · Notes)
-  LayoutEditorWindowController.m  layout editor: per-tile size/priority/visibility/order + add/remove (world clocks, apps, any tile)
-  PBDefaults.m              NSUserDefaults key constants
-  PreviewData.m             canned sample telemetry for previews/harnesses
-  PrivateAPI.h              Touch Bar SPI declarations
+  main.m · AppDelegate.m       accessory app · SPI presentation · 1 Hz sampling · actions · full-bar
+  BarView.m                    interactive tile rendering + hit-testing (drives the PBLayout engine)
+  PBLayout.m                   AppKit-free tile model + size-aware packing + per-mode composition + profiles
+  PBClock.m · PBThermal.m      world-clock master list (DST-correct) · CPU temp + fan RPM
+  Stats.m · Controls.m         cpu/mem/net/gpu/disk/battery · volume·brightness·media
+  Pomodoro.m · VoiceNotes.m    work/break timer · Focus side-notes (walkie-talkie)
+  TouchBarPresenter.m          Touch Bar SPI: present/dismiss + reversible full-bar takeover
+  MirrorController.m           desktop mirror panel (floating, clickable copy)
+  AgentCoordinator.m · Agent.m on-device agent · chat/voice window · safe action dispatch
+  SettingsWindowController.m   sectioned settings window
+  LayoutEditorWindowController.m  per-tile editor: size/priority/visibility/order + add/remove
 ```
 
-## Tweak
+A polished overview lives in [`site/index.html`](site/index.html) (open it in a browser).
 
-| What | Where |
-|------|-------|
-| Tiles shown / order / widths | `BarView.m` → `tilesForMode()` (weight·priority·minW), or the in-app **Customize layout…** editor |
-| Sample rate | `AppDelegate.m` → `timerWithTimeInterval:1.0` |
-| Colours / thresholds | `BarView.m` colour helpers |
-| Pomodoro defaults | Settings window, or `Pomodoro.m` |
+## Author
+
+Built by **Alexey Abramov** — [www.alexeyabramov.com](https://www.alexeyabramov.com).
+
+## License
+
+Licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0) — see
+[`LICENSE`](LICENSE). In short: you're free to use, study, modify, and share it,
+but if you distribute it **or run a modified version as a network service**, you
+must make your source available under the same license.
