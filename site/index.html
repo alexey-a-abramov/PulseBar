@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PulseBar — an advanced, interactive Touch Bar for macOS</title>
+<meta name="description" content="PulseBar takes over the macOS Touch Bar — regardless of which app is focused — and turns it into a live system monitor and a control surface you can actually press.">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 16'><path d='M1 8h5l1.5 2L9 4l1.5 8L12 3l1.5 5H16h5' fill='none' stroke='%23b59cff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="brand">
+      <svg class="pulse" viewBox="0 0 26 16"><path d="M1 8h5l1.5 2L9 4l1.5 8L12 3l1.5 5H16h5"/></svg>
+      PulseBar
+    </span>
+    <div class="links">
+      <a href="#modes">Modes</a>
+      <a href="#tiles">Tiles</a>
+      <a href="#profiles">Layout</a>
+      <a href="#smart">Smart</a>
+      <a href="#build">Build</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <h1><span class="grad">PulseBar</span></h1>
+    <p class="tag">An advanced, interactive Touch Bar for macOS.</p>
+    <p class="sub">A native menu-bar agent that takes over the Touch Bar — <em>regardless of which app is focused</em> — and turns it into a live system monitor <em>and</em> a control surface you can actually press.</p>
+    <div class="cta">
+      <a class="btn primary" href="#build">Build &amp; run</a>
+      <a class="btn ghost" href="#modes">See the modes</a>
+    </div>
+    <div class="heroshot">
+      <img src="assets/hero_modes.png" alt="PulseBar shown in all six modes: System, Media, Focus, Classic, Actions, and Glance" width="2700" height="690">
+    </div>
+    <div class="chips">
+      <span class="chip"><b>6</b> animated modes</span>
+      <span class="chip">Live CPU · MEM · GPU · NET · DISK</span>
+      <span class="chip">CPU <b>temp + fan</b></span>
+      <span class="chip"><b>DST-correct</b> world clocks</span>
+      <span class="chip">On-device agent</span>
+      <span class="chip">Works in <b>every</b> app</span>
+    </div>
+  </div>
+</header>
+
+<section id="about">
+  <div class="wrap">
+    <p class="lead">The public <code>NSTouchBar</code> API only shows up when <em>your</em> app is frontmost. PulseBar instead presents a <b>system-modal</b> bar that stays put across every app, updating once a second — so your machine's vitals and your favourite controls are always one glance (and one tap) away, no matter what you're doing.</p>
+  </div>
+</section>
+
+<section id="modes">
+  <div class="wrap">
+    <p class="eyebrow">Six modes, one accordion</p>
+    <h2>Tap a tab — the bar switches</h2>
+    <p class="muted" style="max-width:720px;margin:0 0 38px">The active tab expands (the “accordion”), the panel cross-fades, and your choice is remembered. The agent orb stays pinned on the right in every mode.</p>
+
+    <div class="mode mode-system">
+      <div class="label"><span class="dot"></span><span class="name">System</span><span class="desc">CPU · MEM · GPU · NET · DISK · temp/fan · uptime · battery</span></div>
+      <div class="bar"><img src="assets/mode_system.png" alt="System mode" width="2700" height="90"></div>
+    </div>
+    <div class="mode mode-media">
+      <div class="label"><span class="dot"></span><span class="name">Media</span><span class="desc">now-playing transport · scrubber (tap to seek) · volume</span></div>
+      <div class="bar"><img src="assets/mode_media.png" alt="Media mode" width="2700" height="90"></div>
+    </div>
+    <div class="mode mode-focus">
+      <div class="label"><span class="dot"></span><span class="name">Focus</span><span class="desc">adaptive Pomodoro · session · voice side-note · caffeine · lock</span></div>
+      <div class="bar"><img src="assets/mode_focus.png" alt="Focus mode" width="2700" height="90"></div>
+    </div>
+    <div class="mode mode-classic">
+      <div class="label"><span class="dot"></span><span class="name">Classic</span><span class="desc">brightness · volume · media — the Control-Strip basics</span></div>
+      <div class="bar"><img src="assets/mode_classic.png" alt="Classic mode" width="2700" height="90"></div>
+    </div>
+    <div class="mode mode-actions">
+      <div class="label"><span class="dot"></span><span class="name">Actions</span><span class="desc">colourful app launchers · screenshot · lock</span></div>
+      <div class="bar"><img src="assets/mode_actions.png" alt="Actions mode" width="2700" height="90"></div>
+    </div>
+    <div class="mode mode-glance">
+      <div class="label"><span class="dot"></span><span class="name">Glance</span><span class="desc">at-a-glance dashboard: CPU · MEM · temp · world clocks · battery</span></div>
+      <div class="bar"><img src="assets/mode_glance.png" alt="Glance mode" width="2700" height="90"></div>
+    </div>
+  </div>
+</section>
+
+<section id="tiles">
+  <div class="wrap">
+    <p class="eyebrow">Glanceable &amp; tappable</p>
+    <h2>Tiles that do something</h2>
+    <p class="muted" style="max-width:720px;margin:0 0 38px">Every metric tile is live; tap one to cycle its view (sparkline ↔ fundamentals). Controls respond to taps and drags in real time.</p>
+    <div class="grid">
+      <div class="card"><span class="ic">📈</span><h3>CPU</h3><p>% + sparkline + the current top process. Tap for a per-core view (P + E cores).</p></div>
+      <div class="card"><span class="ic">🧠</span><h3>Memory</h3><p>Used / total GB + pressure gauge; shows swap when memory spills over.</p></div>
+      <div class="card"><span class="ic">🌡️</span><h3>Temp + Fan</h3><p>CPU die temperature with a green→amber→red ramp + fan RPM. Apple-Silicon temps come straight from the thermal sensors.</p></div>
+      <div class="card"><span class="ic">🌍</span><h3>World Clock</h3><p>Any city from a master list, <b>DST/summer-time correct</b>, with a live ±offset and a next/prev-day badge. Add several.</p></div>
+      <div class="card"><span class="ic">⚡</span><h3>GPU · NET · DISK</h3><p>GPU utilisation, live ↓/↑ throughput, and read/write I/O with free space — each with its own sparkline.</p></div>
+      <div class="card"><span class="ic">🎛️</span><h3>Controls</h3><p>Now-playing transport, volume &amp; brightness sliders, Pomodoro, screenshot, lock — drag and tap, right on the bar.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="profiles">
+  <div class="wrap">
+    <p class="eyebrow">Composable &amp; ✕-aware</p>
+    <h2>Layout profiles</h2>
+    <p class="muted" style="max-width:760px;margin:0 0 36px">macOS sometimes shows a close box (✕) that shoves the bar right. Every profile reserves room for it so the agent orb on the right is always visible. Switch with one tap from the menu — or fine-tune any tile in the editor.</p>
+    <div class="two">
+      <div class="profile">
+        <h3>Default <span class="tagpill">rich</span></h3>
+        <p class="muted">Auto density and the full mode-tab accordion — the everyday layout, applied on first run.</p>
+      </div>
+      <div class="bar"><img src="assets/profile_default.png" alt="Default layout profile" width="2700" height="90"></div>
+    </div>
+    <div class="two" style="margin-top:26px">
+      <div class="profile">
+        <h3>Minimum <span class="tagpill">roomy</span></h3>
+        <p class="muted">The same ✕-aware margins, but icon-only tiles and a collapsed tab strip (active pill + <b>›</b>) to free maximum width for content.</p>
+      </div>
+      <div class="bar"><img src="assets/profile_minimum.png" alt="Minimum layout profile" width="2700" height="90"></div>
+    </div>
+    <p class="muted" style="margin-top:30px;max-width:760px">Widgets are <b>composable per mode</b>: add a world clock, an app launcher, or any tile to any mode via the in-app editor — the same tile can live in several modes. A size-aware packing engine caches its work, so none of it costs a frame.</p>
+  </div>
+</section>
+
+<section id="smart">
+  <div class="wrap">
+    <p class="eyebrow">More than a monitor</p>
+    <h2>Quietly smart</h2>
+    <div class="grid">
+      <div class="card"><span class="ic">🍅</span><h3>Adaptive Pomodoro</h3><p>The focus timer's length adapts to how long you've actually been working — 25 min + 5 for every 30 min of unbroken session, clamped 20–50.</p></div>
+      <div class="card"><span class="ic">🎙️</span><h3>Voice side-notes</h3><p>Hold the NOTE tile in Focus and just talk (walkie-talkie). Captured on-device to a log; export to CSV any time.</p></div>
+      <div class="card"><span class="ic">🤖</span><h3>On-device agent</h3><p>Ask the agent by text or push-to-talk; it runs a local model and dispatches safe actions — no cloud round-trip.</p></div>
+      <div class="card"><span class="ic">🔀</span><h3>Per-app auto-switch</h3><p>Pair apps with modes (Xcode → System, Music → Media) so the bar follows your context. Off by default, fully configurable.</p></div>
+      <div class="card"><span class="ic">⌨️</span><h3>Modifier shortcuts</h3><p>Hold a modifier to peek your previous mode or pop an app-actions overlay — pick which key does what.</p></div>
+      <div class="card"><span class="ic">🖥️</span><h3>Desktop mirror</h3><p>A floating, clickable copy of the bar on your desktop — handy on any Mac, and a live preview while you tweak the fit.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <p class="eyebrow">How it owns the bar</p>
+    <h2>The honest part</h2>
+    <p class="muted" style="max-width:760px;margin:0 0 22px">To hold the bar persistently across apps, PulseBar uses the same private SPI as Pock / MTMR / BetterTouchTool — all verified at runtime on the build machine before use: <code>DFRFoundation</code> for focus-independent presentation (<code>placement:1</code> hides the Control Strip natively), plus <code>DisplayServices</code>, <code>MediaRemote</code> and CoreAudio for brightness, now-playing and volume.</p>
+    <div class="note">⚠️ <b>Private API → not App-Store-shippable; Touch Bar Macs only.</b> Built &amp; tested on a MacBook Pro (M1 13″, macOS 15.6). Guarded so it degrades to a menu-bar item where the SPI is missing.</div>
+  </div>
+</section>
+
+<section id="build">
+  <div class="wrap">
+    <p class="eyebrow">Get it running</p>
+    <h2>Build · Run · Test</h2>
+    <p class="muted" style="max-width:680px;margin:0 0 26px">No Xcode project to wrangle — three shell scripts. Runs as a background accessory app (no Dock icon; a <code>▦</code> menu-bar icon).</p>
+    <pre><code><span class="c"># build → build/PulseBar.app (ad-hoc signed) + bare binary</span>
+./build.sh
+
+<span class="c"># build-if-needed, then launch — look at your Touch Bar</span>
+./run.command
+
+<span class="c"># unit tests (all samplers) + smoke test (presents the bar, clean exit)</span>
+./tests/run_tests.sh</code></pre>
+    <p class="muted" style="margin-top:22px">Quit any time via the <code>▦</code> menu-bar icon → <b>Quit PulseBar</b>. Open <b>Settings</b> from the same menu to tune layout profiles, shortcuts, per-app auto-switch, the on-device model, and more.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="brand">
+      <svg class="pulse" viewBox="0 0 26 16"><path d="M1 8h5l1.5 2L9 4l1.5 8L12 3l1.5 5H16h5"/></svg>
+      PulseBar
+    </span>
+    <span>A native macOS Touch Bar takeover · system monitor · control surface</span>
+  </div>
+</footer>
+
+</body>
+</html>
